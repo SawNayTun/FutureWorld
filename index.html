@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>၂လုံးထီ စီမံခန့်ခွဲမှုစနစ်</title>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @media print {
+        body * {
+          visibility: hidden;
+        }
+        .printable-area, .printable-area * {
+          visibility: visible;
+        }
+        .printable-area {
+          position: absolute;
+          left: 20px;
+          top: 20px;
+          width: calc(100% - 40px);
+          background: white !important;
+          color: black !important;
+          padding: 1rem;
+          border: 1px solid #eee;
+          border-radius: 8px;
+        }
+        .printable-area div, .printable-area p, .printable-area span, .printable-area h3, .printable-area h4, .printable-area h5 {
+          color: black !important;
+          background-color: transparent !important;
+        }
+        .printable-area .grid-cols-10 > div {
+          border: 1px solid #ccc;
+          background-color: #f0f0f0 !important;
+        }
+        .printable-area .text-yellow-300 { 
+            font-weight: bold; 
+            color: #000 !important;
+        }
+        .no-print { 
+            display: none !important; 
+        }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "rxjs": "https://esm.sh/rxjs@^7.8.2?conditions=es2015",
+    "rxjs/operators": "https://esm.sh/rxjs@^7.8.2/operators?conditions=es2015",
+    "rxjs/ajax": "https://esm.sh/rxjs@^7.8.2/ajax?conditions=es2015",
+    "rxjs/webSocket": "https://esm.sh/rxjs@^7.8.2/webSocket?conditions=es2015",
+    "rxjs/testing": "https://esm.sh/rxjs@^7.8.2/testing?conditions=es2015",
+    "rxjs/fetch": "https://esm.sh/rxjs@^7.8.2/fetch?conditions=es2015",
+    "@google/genai": "https://esm.sh/@google/genai@^1.35.0?external=rxjs",
+    "@angular/common/http": "https://esm.sh/@angular/common@^21.0.8/http?external=rxjs",
+    "@angular/compiler": "https://esm.sh/@angular/compiler@^21.0.8?external=rxjs",
+    "@angular/core": "https://esm.sh/@angular/core@^21.0.8?external=rxjs",
+    "@angular/platform-browser": "https://esm.sh/@angular/platform-browser@^21.0.8?external=rxjs",
+    "@angular/forms": "https://esm.sh/@angular/forms@^21.0.8?external=rxjs",
+    "@angular/common": "https://esm.sh/@angular/common@^21.0.8?external=rxjs"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-slate-900 text-gray-300">
+    <app-root></app-root>
+    <script type="module" src="index.tsx"></script>
+  </body>
+</html>
