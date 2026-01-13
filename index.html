@@ -4,43 +4,29 @@
     <meta charset="utf-8" />
     <title>၂လုံးထီ စီမံခန့်ခွဲမှုစနစ်</title>
     
+    <base href="/FutureWorld/">
+
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       @media print {
-        body * {
-          visibility: hidden;
-        }
-        .printable-area, .printable-area * {
-          visibility: visible;
-        }
+        body * { visibility: hidden; }
+        .printable-area, .printable-area * { visibility: visible; }
         .printable-area {
-          position: absolute;
-          left: 20px;
-          top: 20px;
-          width: calc(100% - 40px);
-          background: white !important;
-          color: black !important;
-          padding: 1rem;
-          border: 1px solid #eee;
-          border-radius: 8px;
+          position: absolute; left: 20px; top: 20px;
+          width: calc(100% - 40px); background: white !important;
+          color: black !important; padding: 1rem;
+          border: 1px solid #eee; border-radius: 8px;
         }
         .printable-area div, .printable-area p, .printable-area span, .printable-area h3, .printable-area h4, .printable-area h5 {
-          color: black !important;
-          background-color: transparent !important;
+          color: black !important; background-color: transparent !important;
         }
         .printable-area .grid-cols-10 > div {
-          border: 1px solid #ccc;
-          background-color: #f0f0f0 !important;
+          border: 1px solid #ccc; background-color: #f0f0f0 !important;
         }
-        .printable-area .text-yellow-300 { 
-            font-weight: bold; 
-            color: #000 !important;
-        }
-        .no-print { 
-            display: none !important; 
-        }
+        .printable-area .text-yellow-300 { font-weight: bold; color: #000 !important; }
+        .no-print { display: none !important; }
       }
     </style>
   <script type="importmap">
@@ -62,7 +48,7 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
+<link rel="stylesheet" href="index.css">
 </head>
   <body class="bg-slate-900 text-gray-300">
     <app-root></app-root>
