@@ -20,6 +20,7 @@ interface PayoutDetails {
 interface AgentWithPerformance extends Agent {
   totalSales: number;
 }
+type OverLimitListItem = { number: string; overLimitAmount: number };
 
 // --- Constants ---
 const POWER_NUMBERS = ['05', '16', '27', '38', '49'];
@@ -103,7 +104,11 @@ export class CodeAnalyzerComponent implements OnInit {
   agentSortBy = signal<'name' | 'sales'>('sales');
   
   forwardingAssignments = signal<Assignments | null>(null);
-  acknowledgedOverLimits = signal<Map<string, number>>(new Map()); // number -> acknowledged over-limit amount
+  acknowledgedOverLimits = signal<Map<string, number>>(new Map()); // For Main Bookie & Forwardable list in Middle Bookie
+  
+  // --- State for Middle Bookie Over-Limit Management ---
+  rejectedOverLimits = signal<Set<string>>(new Set<string>()); // Numbers the upper bookie rejected
+  acknowledgedHeldOverLimits = signal<Map<string, number>>(new Map()); // For the held list in Middle Bookie
 
   // --- Messaging State ---
   confirmationMessage = signal('');
@@ -156,14 +161,70 @@ export class CodeAnalyzerComponent implements OnInit {
   });
 
   totalBetAmount = computed<number>(() => this.gridCells().reduce((sum, cell) => sum + cell.amount, 0));
-  totalOverLimitAmount = computed<number>(() => this.gridCells().reduce((sum, cell) => sum + cell.overLimitAmount, 0));
-  totalHeldAmount = computed<number>(() => this.totalBetAmount() - this.totalOverLimitAmount());
+  overLimitCells = computed(() => this.gridCells().filter(cell => cell.isOverLimit));
+
+  // --- New Over-Limit List Computations ---
+  forwardableOverLimitNumbers = computed<OverLimitListItem[]>(() => {
+      if (this.activeMode() !== 'အလယ်ဒိုင်') return [];
+      const allForwardable = this.overLimitCells().filter(cell => !this.rejectedOverLimits().has(cell.number));
+      return this.filterAcknowledged(allForwardable, this.acknowledgedOverLimits());
+  });
+
+  heldOverLimitNumbers = computed<OverLimitListItem[]>(() => {
+      if (this.activeMode() !== 'အလယ်ဒိုင်') return [];
+      const allHeld = this.overLimitCells().filter(cell => this.rejectedOverLimits().has(cell.number));
+      return this.filterAcknowledged(allHeld, this.acknowledgedHeldOverLimits());
+  });
+  
+  // For 'ဒိုင်ကြီး' mode
+  displayedOverLimitNumbers = computed<OverLimitListItem[]>(() => {
+      if (this.activeMode() !== 'ဒိုင်ကြီး') return [];
+      return this.filterAcknowledged(this.overLimitCells(), this.acknowledgedOverLimits());
+  });
+
+  private filterAcknowledged(list: GridCell[], acknowledgedMap: Map<string, number>): OverLimitListItem[] {
+      const displayed: OverLimitListItem[] = [];
+      for (const cell of list) {
+          const acknowledgedAmount = acknowledgedMap.get(cell.number);
+          if (acknowledgedAmount !== undefined) {
+              const newOverLimitPortion = cell.overLimitAmount - acknowledgedAmount;
+              if (newOverLimitPortion > 0) {
+                  displayed.push({ number: cell.number, overLimitAmount: newOverLimitPortion });
+              }
+          } else {
+              displayed.push({ number: cell.number, overLimitAmount: cell.overLimitAmount });
+          }
+      }
+      return displayed;
+  }
+
+  // --- Financial Computations ---
+  totalOverLimitAmount = computed<number>(() => this.overLimitCells().reduce((sum, cell) => sum + cell.overLimitAmount, 0));
+
+  forwardableOverLimitAmount = computed<number>(() => {
+    if (this.activeMode() !== 'အလယ်ဒိုင်') return 0;
+    return this.overLimitCells()
+        .filter(cell => !this.rejectedOverLimits().has(cell.number))
+        .reduce((sum, cell) => sum + cell.overLimitAmount, 0);
+  });
+  
+  totalHeldAmount = computed<number>(() => {
+    const totalSales = this.totalBetAmount();
+    if (this.activeMode() === 'အလယ်ဒိုင်') {
+        return totalSales - this.forwardableOverLimitAmount();
+    }
+    return totalSales - this.totalOverLimitAmount();
+  });
+  
   payableCommissionAmount = computed<number>(() => this.totalHeldAmount() * (this.commissionToPay() / 100));
+  
   receivableCommissionAmount = computed<number>(() => {
     if (this.activeMode() !== 'အလယ်ဒိုင်') return 0;
-    return this.totalOverLimitAmount() * (this.commissionFromUpperBookie() / 100);
+    return this.forwardableOverLimitAmount() * (this.commissionFromUpperBookie() / 100);
   });
+  
   agentCommissionEarned = computed<number>(() => this.totalBetAmount() * (this.agentCommissionFromBookie() / 100));
+  
   netAmount = computed<number>(() => {
     switch (this.activeMode()) {
       case 'အလယ်ဒိုင်':
@@ -188,27 +249,6 @@ export class CodeAnalyzerComponent implements OnInit {
     return agents;
   });
   
-  overLimitCells = computed(() => this.gridCells().filter(cell => cell.isOverLimit));
-  
-  displayedOverLimitNumbers = computed(() => {
-    const allOver = this.overLimitCells();
-    const acknowledged = this.acknowledgedOverLimits();
-    const displayed: { number: string; overLimitAmount: number }[] = [];
-
-    for (const cell of allOver) {
-        const acknowledgedAmount = acknowledged.get(cell.number);
-        if (acknowledgedAmount !== undefined) {
-            const newOverLimitPortion = cell.overLimitAmount - acknowledgedAmount;
-            if (newOverLimitPortion > 0) {
-                displayed.push({ number: cell.number, overLimitAmount: newOverLimitPortion });
-            }
-        } else {
-            displayed.push({ number: cell.number, overLimitAmount: cell.overLimitAmount });
-        }
-    }
-    return displayed;
-  });
-
   overLimitForModal = computed(() => {
     return this.overLimitCells().map(n => ({ number: n.number, amount: n.overLimitAmount })).filter(n => n.amount > 0);
   });
@@ -335,6 +375,8 @@ export class CodeAnalyzerComponent implements OnInit {
     this.acceptedSubmissions.set([]);
     this.forwardingAssignments.set(null);
     this.acknowledgedOverLimits.set(new Map());
+    this.rejectedOverLimits.set(new Set());
+    this.acknowledgedHeldOverLimits.set(new Map());
   }
 
   undoLastBet(): void {
@@ -702,76 +744,98 @@ export class CodeAnalyzerComponent implements OnInit {
   logout() { this.licenseService.logout(); }
   setAgentSort(sortBy: 'name' | 'sales') { this.agentSortBy.set(sortBy); }
 
-  acknowledgeSingleOverLimit(cell: { number: string; overLimitAmount: number }): void {
-    const textToCopy = `${cell.number}=${cell.overLimitAmount.toLocaleString()}`;
-    navigator.clipboard.writeText(textToCopy);
-
-    const totalOverLimitCell = this.overLimitCells().find(c => c.number === cell.number);
-    if (!totalOverLimitCell) return;
-
-    this.acknowledgedOverLimits.update(currentMap => {
-        currentMap.set(cell.number, totalOverLimitCell.overLimitAmount);
-        return new Map(currentMap);
-    });
-
-    this.statusMessage.set(`${cell.number} ကို ကူးယူပြီး ယာယီဖျောက်ထားလိုက်ပါပြီ။`);
-    setTimeout(() => this.statusMessage.set(''), 3000);
+  // --- Over-limit Management Methods ---
+  rejectOverLimit(number: string): void {
+      this.rejectedOverLimits.update(set => {
+          set.add(number);
+          return new Set(set);
+      });
+      this.acknowledgedOverLimits.update(map => {
+          map.delete(number);
+          return new Map(map);
+      });
   }
 
-  acknowledgeAllOverLimits(): void {
-    const displayedNumbers = this.displayedOverLimitNumbers();
-    if (displayedNumbers.length === 0) return;
-
-    const name = this.bookieName() || 'စာရင်း';
-    const date = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
-    const session = this.session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း';
-    const totalCount = displayedNumbers.length;
-    const totalAmount = displayedNumbers.reduce((sum, cell) => sum + cell.overLimitAmount, 0);
-
-    const chunks: string[][] = [];
-    const chunkSize = 10;
-    for (let i = 0; i < totalCount; i += chunkSize) {
-        const chunk = displayedNumbers.slice(i, i + chunkSize);
-        const chunkContent = chunk.map(cell => `${cell.number} = ${cell.overLimitAmount.toLocaleString()}`);
-        chunks.push(chunkContent);
-    }
-
-    const totalChunks = chunks.length;
-    let fullText = '';
-    
-    chunks.forEach((chunk, index) => {
-        fullText += `--- ${name} (${index + 1}/${totalChunks}) ---\n`;
-        if (index === 0) {
-            fullText += `နေ့စွဲ: ${date} (${session})\n`;
-        }
-        fullText += `--------------------\n`;
-        fullText += chunk.join('\n') + '\n';
-        if (index < totalChunks - 1) {
-            fullText += `--------------------\n\n`;
-        }
-    });
-
-    if (totalChunks > 0) {
-      fullText += `--------------------\n`;
-    }
-    fullText += `စုစုပေါင်း (${totalCount}) ကွက်: ${totalAmount.toLocaleString()} ${this.currencySymbol()}`;
-
-    navigator.clipboard.writeText(fullText.trim());
-
-    const allOver = this.overLimitCells();
-    this.acknowledgedOverLimits.update(currentMap => {
-      const newMap = new Map(currentMap);
-      displayedNumbers.forEach(displayedCell => {
-        const totalOverLimitCell = allOver.find(c => c.number === displayedCell.number);
-        if (totalOverLimitCell) {
-          newMap.set(displayedCell.number, totalOverLimitCell.overLimitAmount);
-        }
+  reforwardOverLimit(number: string): void {
+      this.rejectedOverLimits.update(set => {
+          set.delete(number);
+          return new Set(set);
       });
-      return newMap;
-    });
+      this.acknowledgedHeldOverLimits.update(map => {
+          map.delete(number);
+          return new Map(map);
+      });
+  }
 
-    this.statusMessage.set(`ကာသီး/လစ်မစ်ကျော် စာရင်းအားလုံးကို ကူးယူပြီး ယာယီဖျောက်ထားလိုက်ပါပြီ။`);
-    setTimeout(() => this.statusMessage.set(''), 3000);
+  private acknowledgeList(list: OverLimitListItem[], mapToUpdate: (cb: (currentMap: Map<string, number>) => Map<string, number>) => void, title: string): void {
+      if (list.length === 0) return;
+      const fullText = this.formatOverLimitForCopy(list, title);
+      navigator.clipboard.writeText(fullText);
+
+      const allOver = this.overLimitCells();
+      mapToUpdate(currentMap => {
+          const newMap = new Map(currentMap);
+          list.forEach(displayedCell => {
+              const totalOverLimitCell = allOver.find(c => c.number === displayedCell.number);
+              if (totalOverLimitCell) {
+                  newMap.set(displayedCell.number, totalOverLimitCell.overLimitAmount);
+              }
+          });
+          return newMap;
+      });
+
+      this.statusMessage.set(`${title} ကာသီးစာရင်းကို ကူးယူပြီး ယာယီဖျောက်ထားလိုက်ပါပြီ။`);
+      setTimeout(() => this.statusMessage.set(''), 3000);
+  }
+
+  acknowledgeAllForwardableOverLimits(): void {
+      this.acknowledgeList(this.forwardableOverLimitNumbers(), (cb) => this.acknowledgedOverLimits.update(cb), 'အပေါ်ဒိုင်သို့ပို့ရန်');
+  }
+
+  acknowledgeAllHeldOverLimits(): void {
+      this.acknowledgeList(this.heldOverLimitNumbers(), (cb) => this.acknowledgedHeldOverLimits.update(cb), 'ကိုယ်တိုင်ကိုင်');
+  }
+
+  acknowledgeMainBookieOverLimits(): void {
+      this.acknowledgeList(this.displayedOverLimitNumbers(), (cb) => this.acknowledgedOverLimits.update(cb), 'လစ်မစ်ကျော်');
+  }
+
+  private formatOverLimitForCopy(list: OverLimitListItem[], title: string): string {
+      const name = this.bookieName() || 'စာရင်း';
+      const date = new Date().toLocaleDateString('en-CA');
+      const session = this.session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း';
+      const totalCount = list.length;
+      const totalAmount = list.reduce((sum, cell) => sum + cell.overLimitAmount, 0);
+
+      const chunks: string[][] = [];
+      const chunkSize = 10;
+      for (let i = 0; i < totalCount; i += chunkSize) {
+          const chunk = list.slice(i, i + chunkSize);
+          const chunkContent = chunk.map(cell => `${cell.number} = ${cell.overLimitAmount.toLocaleString()}`);
+          chunks.push(chunkContent);
+      }
+
+      const totalChunks = chunks.length;
+      let fullText = '';
+      
+      chunks.forEach((chunk, index) => {
+          fullText += `--- ${name} (${title}) (${index + 1}/${totalChunks}) ---\n`;
+          if (index === 0) {
+              fullText += `နေ့စွဲ: ${date} (${session})\n`;
+          }
+          fullText += `--------------------\n`;
+          fullText += chunk.join('\n') + '\n';
+          if (index < totalChunks - 1) {
+              fullText += `--------------------\n\n`;
+          }
+      });
+
+      if (totalChunks > 0) {
+        fullText += `--------------------\n`;
+      }
+      fullText += `စုစုပေါင်း (${totalCount}) ကွက်: ${totalAmount.toLocaleString()} ${this.currencySymbol()}`;
+
+      return fullText.trim();
   }
 
   private parseBetString(input: string): Map<string, number> {
