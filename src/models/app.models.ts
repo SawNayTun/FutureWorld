@@ -22,6 +22,7 @@ export interface GridCell {
   betsString: string;
   betsTooltip: string;
   overLimitAmount: number;
+  limit: number;
 }
 
 export interface Report {

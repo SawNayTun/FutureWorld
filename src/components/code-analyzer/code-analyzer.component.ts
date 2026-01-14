@@ -6,6 +6,7 @@ import { ReportViewerComponent } from '../report-viewer/report-viewer.component'
 import { UserGuideComponent } from '../user-guide/user-guide.component';
 import { ForwardingModalComponent, Assignments } from '../forwarding-modal/forwarding-modal.component';
 import { Agent, UpperBookie, Report, GridCell, BetDetail } from '../../models/app.models';
+import { SummaryCardComponent } from '../summary-card/summary-card.component';
 
 // --- Interfaces ---
 interface Bet { number: string; amount: number; }
@@ -33,7 +34,7 @@ const ODD_DIGITS = ['1', '3', '5', '7', '9'];
   selector: 'app-code-analyzer',
   templateUrl: './code-analyzer.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, ReportViewerComponent, UserGuideComponent, ForwardingModalComponent],
+  imports: [FormsModule, ReportViewerComponent, UserGuideComponent, ForwardingModalComponent, SummaryCardComponent],
   host: {
     '(window:keydown)': 'handleKeyboardEvents($event)',
     '(window:beforeunload)': 'onBeforeUnload($event)'
@@ -56,6 +57,7 @@ export class CodeAnalyzerComponent implements OnInit {
   showReports = signal(false);
   showUserGuide = signal(false);
   showForwardingModal = signal(false);
+  showClearAllConfirmation = signal(false);
   isOnline = signal(navigator.onLine);
   
   // --- Mode-Specific State ---
@@ -136,14 +138,16 @@ export class CodeAnalyzerComponent implements OnInit {
     const data = this.lotteryData();
     const cells: GridCell[] = [];
     const isAgentMode = this.activeMode() === 'အေးဂျင့်';
+    const currentIndLimits = this.individualLimits();
+    const currentDefLimit = this.defaultLimit();
 
     for (let i = 0; i < 100; i++) {
       const numberStr = i.toString().padStart(2, '0');
       const breakdown = data.get(numberStr) || [];
       const amount = breakdown.reduce((sum, bet) => sum + bet.amount, 0);
-      const limit = (this.activeMode() === 'ဒိုင်ကြီး' && this.individualLimits().has(numberStr))
-        ? this.individualLimits().get(numberStr)!
-        : this.defaultLimit();
+      const limit = (this.activeMode() === 'ဒိုင်ကြီး' || this.activeMode() === 'အလယ်ဒိုင်') && currentIndLimits.has(numberStr)
+        ? currentIndLimits.get(numberStr)!
+        : currentDefLimit;
       
       const isOverLimit = amount > limit;
       const overLimitAmount = isOverLimit ? amount - limit : 0;
@@ -155,7 +159,7 @@ export class CodeAnalyzerComponent implements OnInit {
       
       const betsTooltip = breakdown.map(b => `${b.source}: ${b.amount}`).join('; ');
 
-      cells.push({ number: numberStr, amount, isOverLimit, breakdown, betsString, betsTooltip, overLimitAmount });
+      cells.push({ number: numberStr, amount, isOverLimit, breakdown, betsString, betsTooltip, overLimitAmount, limit });
     }
     return cells;
   });
@@ -270,6 +274,14 @@ export class CodeAnalyzerComponent implements OnInit {
     return true;
   });
 
+  overLimitConfirmationText = computed(() => {
+    const confirmation = this.pendingInboxConfirmation();
+    if (!confirmation) {
+      return '';
+    }
+    return confirmation.overLimitBets.map(b => `${b.number}=${b.amount}`).join(', ');
+  });
+
   constructor() {
     window.addEventListener('online', () => this.isOnline.set(true));
     window.addEventListener('offline', () => this.isOnline.set(false));
@@ -278,6 +290,12 @@ export class CodeAnalyzerComponent implements OnInit {
     effect(() => this.persistenceService.set('lottery_upper_bookies', this.upperBookies()));
     effect(() => this.persistenceService.set('lottery_agent_upper_bookies', this.agentUpperBookies()));
     effect(() => this.persistenceService.set('lottery_currency', this.currencySymbol()));
+    effect(() => this.persistenceService.set('lottery_bookieName', this.bookieName()));
+    effect(() => this.persistenceService.set('lottery_defaultLimit', this.defaultLimit()));
+    effect(() => this.persistenceService.set('lottery_payoutRate', this.payoutRate()));
+    effect(() => this.persistenceService.set('lottery_commissionToPay', this.commissionToPay()));
+    effect(() => this.persistenceService.set('lottery_commissionFromUpperBookie', this.commissionFromUpperBookie()));
+    effect(() => this.persistenceService.set('lottery_agentCommissionFromBookie', this.agentCommissionFromBookie()));
     
     effect(() => {
       if (this.agents().length > 0 && !this.agents().some(a => a.name === this.selectedAgentForInbox())) {
@@ -289,16 +307,32 @@ export class CodeAnalyzerComponent implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
-    const [agents, upperBookies, agentUpperBookies, currency] = await Promise.all([
+    const [
+        agents, upperBookies, agentUpperBookies, currency,
+        bookieName, defaultLimit, payoutRate, commissionToPay,
+        commissionFromUpperBookie, agentCommissionFromBookie
+    ] = await Promise.all([
       this.persistenceService.get<Agent[]>('lottery_agents'),
       this.persistenceService.get<UpperBookie[]>('lottery_upper_bookies'),
       this.persistenceService.get<{name: string}[]>('lottery_agent_upper_bookies'),
       this.persistenceService.get<'K' | '฿' | '¥'>('lottery_currency'),
+      this.persistenceService.get<string>('lottery_bookieName'),
+      this.persistenceService.get<number>('lottery_defaultLimit'),
+      this.persistenceService.get<number>('lottery_payoutRate'),
+      this.persistenceService.get<number>('lottery_commissionToPay'),
+      this.persistenceService.get<number>('lottery_commissionFromUpperBookie'),
+      this.persistenceService.get<number>('lottery_agentCommissionFromBookie'),
     ]);
     if (agents) this.agents.set(agents);
     if (upperBookies) this.upperBookies.set(upperBookies);
     if (agentUpperBookies) this.agentUpperBookies.set(agentUpperBookies);
     if (currency) this.currencySymbol.set(currency);
+    if (bookieName !== null) this.bookieName.set(bookieName);
+    if (defaultLimit !== null) this.defaultLimit.set(Number(defaultLimit));
+    if (payoutRate !== null) this.payoutRate.set(Number(payoutRate));
+    if (commissionToPay !== null) this.commissionToPay.set(Number(commissionToPay));
+    if (commissionFromUpperBookie !== null) this.commissionFromUpperBookie.set(Number(commissionFromUpperBookie));
+    if (agentCommissionFromBookie !== null) this.agentCommissionFromBookie.set(Number(agentCommissionFromBookie));
   }
 
   handleKeyboardEvents(event: KeyboardEvent) {
@@ -368,7 +402,18 @@ export class CodeAnalyzerComponent implements OnInit {
   }
   
   clearAllBets(): void {
+    if (this.betHistory().length === 0) {
+      this.statusMessage.set('ဖျက်ရန် စာရင်းများမရှိသေးပါ။');
+      setTimeout(() => this.statusMessage.set(''), 3000);
+      return;
+    }
+    this.showClearAllConfirmation.set(true);
+  }
+
+  confirmClearAll(): void {
     this.betHistory.set([]);
+    this.userInput.set('');
+    this.inboxInput.set('');
     this.confirmationMessage.set('');
     this.submissionText.set('');
     this.pendingSubmissions.set([]);
@@ -377,6 +422,10 @@ export class CodeAnalyzerComponent implements OnInit {
     this.acknowledgedOverLimits.set(new Map());
     this.rejectedOverLimits.set(new Set());
     this.acknowledgedHeldOverLimits.set(new Map());
+    this.individualLimits.set(new Map());
+    this.showClearAllConfirmation.set(false);
+    this.statusMessage.set('စာရင်းအားလုံးကို အောင်မြင်စွာ ဖျက်လိုက်ပါပြီ။');
+    setTimeout(() => this.statusMessage.set(''), 3000);
   }
 
   undoLastBet(): void {
@@ -447,11 +496,11 @@ export class CodeAnalyzerComponent implements OnInit {
   removeAgentUpperBookie(bookieNameToRemove: string) { this.agentUpperBookies.update(b => b.filter(bookie => bookie.name !== bookieNameToRemove)); }
 
   openLimitModal(number: string) {
-    if (this.activeMode() !== 'ဒိုင်ကြီး') return;
+    if (this.activeMode() === 'အေးဂျင့်') return;
     const currentLimit = this.individualLimits().get(number) || this.defaultLimit();
     const newLimit = prompt(`ဂဏန်း ${number} အတွက် သီးသန့်လစ်မစ် သတ်မှတ်ပါ:`, currentLimit.toString());
     if (newLimit !== null && !isNaN(parseInt(newLimit))) {
-      this.individualLimits.update(limits => limits.set(number, parseInt(newLimit)));
+      this.individualLimits.update(limits => new Map(limits).set(number, parseInt(newLimit)));
     }
   }
 
@@ -746,29 +795,46 @@ export class CodeAnalyzerComponent implements OnInit {
 
   // --- Over-limit Management Methods ---
   rejectOverLimit(number: string): void {
-      this.rejectedOverLimits.update(set => {
-          set.add(number);
-          return new Set(set);
-      });
-      this.acknowledgedOverLimits.update(map => {
-          map.delete(number);
-          return new Map(map);
-      });
+    const cell = this.gridCells().find(c => c.number === number);
+    if (!cell) return;
+
+    const currentAckForward = this.acknowledgedOverLimits().get(number) || 0;
+    const displayedForwardableAmount = cell.overLimitAmount - currentAckForward;
+    
+    if (displayedForwardableAmount <= 0) return;
+
+    this.rejectedOverLimits.update(set => new Set(set).add(number));
+    
+    // Acknowledge the amount from the forwardable pool so it disappears from that list
+    this.acknowledgedOverLimits.update(map => new Map(map).set(number, cell.overLimitAmount));
+    
+    // To make the amount appear correctly in the held list, we must set the acknowledged
+    // amount for the held list to what the forwardable list *had* acknowledged before this transfer.
+    this.acknowledgedHeldOverLimits.update(map => new Map(map).set(number, currentAckForward));
   }
 
   reforwardOverLimit(number: string): void {
+      const cell = this.gridCells().find(c => c.number === number);
+      if (!cell) return;
+
+      const currentAckHeld = this.acknowledgedHeldOverLimits().get(number) || 0;
+      const displayedHeldAmount = cell.overLimitAmount - currentAckHeld;
+
+      if(displayedHeldAmount <= 0) return;
+
       this.rejectedOverLimits.update(set => {
-          set.delete(number);
-          return new Set(set);
+          const newSet = new Set(set);
+          newSet.delete(number);
+          return newSet;
       });
-      this.acknowledgedHeldOverLimits.update(map => {
-          map.delete(number);
-          return new Map(map);
-      });
+      
+      this.acknowledgedHeldOverLimits.update(map => new Map(map).set(number, cell.overLimitAmount));
+      this.acknowledgedOverLimits.update(map => new Map(map).set(number, currentAckHeld));
   }
 
   private acknowledgeList(list: OverLimitListItem[], mapToUpdate: (cb: (currentMap: Map<string, number>) => Map<string, number>) => void, title: string): void {
       if (list.length === 0) return;
+
       const fullText = this.formatOverLimitForCopy(list, title);
       navigator.clipboard.writeText(fullText);
 
@@ -807,6 +873,12 @@ export class CodeAnalyzerComponent implements OnInit {
       const totalCount = list.length;
       const totalAmount = list.reduce((sum, cell) => sum + cell.overLimitAmount, 0);
 
+      // Start with the main header
+      let fullText = `--- ${name} ---\n`;
+      fullText += `နေ့စွဲ: ${date} (${session})\n`;
+      fullText += `--------------------\n`;
+      
+      // Process the list in chunks
       const chunks: string[][] = [];
       const chunkSize = 10;
       for (let i = 0; i < totalCount; i += chunkSize) {
@@ -814,25 +886,12 @@ export class CodeAnalyzerComponent implements OnInit {
           const chunkContent = chunk.map(cell => `${cell.number} = ${cell.overLimitAmount.toLocaleString()}`);
           chunks.push(chunkContent);
       }
-
-      const totalChunks = chunks.length;
-      let fullText = '';
       
-      chunks.forEach((chunk, index) => {
-          fullText += `--- ${name} (${title}) (${index + 1}/${totalChunks}) ---\n`;
-          if (index === 0) {
-              fullText += `နေ့စွဲ: ${date} (${session})\n`;
-          }
-          fullText += `--------------------\n`;
-          fullText += chunk.join('\n') + '\n';
-          if (index < totalChunks - 1) {
-              fullText += `--------------------\n\n`;
-          }
-      });
+      // Join chunks with a separator
+      fullText += chunks.map(chunk => chunk.join('\n')).join('\n--------------------\n');
 
-      if (totalChunks > 0) {
-        fullText += `--------------------\n`;
-      }
+      // Add the final separator and total line
+      fullText += `\n--------------------\n`;
       fullText += `စုစုပေါင်း (${totalCount}) ကွက်: ${totalAmount.toLocaleString()} ${this.currencySymbol()}`;
 
       return fullText.trim();
