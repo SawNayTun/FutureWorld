@@ -483,11 +483,13 @@ export class CodeAnalyzerComponent implements OnInit {
   
   updateCurrentState(key: keyof AppState, value: any): void {
       const type = this.lotteryType();
-      this.appState.update(current => {
-          const newState = { ...current };
-          (newState[type] as any)[key] = value;
-          return newState;
-      });
+      this.appState.update(current => ({
+          ...current,
+          [type]: {
+              ...current[type],
+              [key]: value
+          }
+      }));
   }
 
   handleKeyboardEvents(event: KeyboardEvent) {
@@ -529,7 +531,12 @@ export class CodeAnalyzerComponent implements OnInit {
 
   setLotteryType(type: LotteryType) { this.lotteryType.set(type); }
   setActiveMode(mode: string): void { this.activeMode.set(mode); }
-  setSession(session: 'morning' | 'evening'): void { this.appState.update(s => { s['2D'].session = session; return s; }); }
+  setSession(session: 'morning' | 'evening'): void { 
+      this.appState.update(current => ({
+          ...current,
+          '2D': { ...current['2D'], session }
+      })); 
+  }
   toggleReports(): void { this.showReports.update(v => !v); }
 
   addBetsFromInput(): void {
@@ -550,7 +557,16 @@ export class CodeAnalyzerComponent implements OnInit {
     if (parsedAmounts.size === 0) return false;
 
     const newEntry: HistoryEntry = { id: crypto.randomUUID(), input, source };
-    this.appState.update(s => { s[this.lotteryType()].betHistory.push(newEntry); return s; });
+    this.appState.update(current => {
+      const type = this.lotteryType();
+      return {
+        ...current,
+        [type]: {
+          ...current[type],
+          betHistory: [...current[type].betHistory, newEntry]
+        }
+      };
+    });
     return true;
   }
   
@@ -565,12 +581,15 @@ export class CodeAnalyzerComponent implements OnInit {
 
   confirmClearAll(): void {
     const type = this.lotteryType();
-    this.appState.update(s => {
-      s[type].betHistory = [];
-      s[type].userInput = '';
-      s[type].individualLimits = new Map();
-      return s;
-    });
+    this.appState.update(current => ({
+        ...current,
+        [type]: {
+            ...current[type],
+            betHistory: [],
+            userInput: '',
+            individualLimits: new Map()
+        }
+    }));
 
     this.inboxInput.set('');
     this.confirmationMessage.set('');
@@ -590,17 +609,29 @@ export class CodeAnalyzerComponent implements OnInit {
   undoLastBet(): void {
     const type = this.lotteryType();
     const history = this.betHistory();
-    // FIX: Replaced .at(-1) with array-length-based access for wider JS engine compatibility.
     const lastEntry = history[history.length - 1];
     if (!lastEntry) return;
 
-    this.appState.update(s => { s[type].betHistory.pop(); return s; });
+    this.appState.update(current => {
+      const newHistory = current[type].betHistory.slice(0, -1);
+      return {
+        ...current,
+        [type]: {
+          ...current[type],
+          betHistory: newHistory
+        }
+      };
+    });
     
     if (this.activeMode() === 'အေးဂျင့်' && lastEntry.source === this.bookieName()) {
       this.pendingSubmissions.update(submissions => {
         const index = submissions.lastIndexOf(lastEntry.input);
-        if (index > -1) submissions.splice(index, 1);
-        return [...submissions];
+        if (index > -1) {
+          const newSubmissions = [...submissions];
+          newSubmissions.splice(index, 1);
+          return newSubmissions;
+        }
+        return submissions;
       });
     }
   }
@@ -610,13 +641,20 @@ export class CodeAnalyzerComponent implements OnInit {
     const entryToDelete = this.betHistory().find(h => h.id === idToDelete);
     if (!entryToDelete) return;
 
-    this.appState.update(s => { s[type].betHistory = s[type].betHistory.filter(e => e.id !== idToDelete); return s; });
+    this.appState.update(s => { 
+        const newHistory = s[type].betHistory.filter(e => e.id !== idToDelete);
+        return { ...s, [type]: { ...s[type], betHistory: newHistory } };
+    });
     
     if (this.activeMode() === 'အေးဂျင့်' && entryToDelete.source === this.bookieName()) {
       this.pendingSubmissions.update(submissions => {
         const index = submissions.indexOf(entryToDelete.input);
-        if (index > -1) submissions.splice(index, 1);
-        return [...submissions];
+        if (index > -1) {
+          const newSubmissions = [...submissions];
+          newSubmissions.splice(index, 1);
+          return newSubmissions;
+        }
+        return submissions;
       });
     }
   }
@@ -665,8 +703,7 @@ export class CodeAnalyzerComponent implements OnInit {
       this.appState.update(s => {
           const newLimits = new Map(s[type].individualLimits);
           newLimits.set(number, parseInt(newLimit));
-          s[type].individualLimits = newLimits;
-          return s;
+          return { ...s, [type]: { ...s[type], individualLimits: newLimits } };
       });
     }
   }
@@ -809,8 +846,8 @@ export class CodeAnalyzerComponent implements OnInit {
     const totalPayout = totalHeldBet * this.payoutRate();
     
     const agentPayouts = this.agents().map(agent => {
-      // FIX: Add explicit types to the reduce callback parameters to resolve potential type inference issues.
-      const agentBetAmount = cell.breakdown.filter(b => b.source === agent.name).reduce((sum: number, b: BetDetail) => sum + b.amount, 0);
+      // Explicitly cast `b.amount` to a number to resolve potential type inference issues where both operands of '+' could be considered 'unknown'.
+      const agentBetAmount = cell.breakdown.filter(b => b.source === agent.name).reduce((sum: number, b: BetDetail) => sum + Number(b.amount), 0);
       return { name: agent.name, betAmount: agentBetAmount, payout: agentBetAmount * this.payoutRate() };
     }).filter(p => p.payout > 0);
     
