@@ -27,9 +27,11 @@ export interface GridCell {
 }
 
 export interface Report {
-  id: string; // Unique key: report_YYYY-MM-DD_mode_session
+  id: string; // Unique key: report_YYYY-MM-DD_mode_session_type
+  lotteryType: '2D' | '3D';
   date: string; // ISO date string of save time
-  session: 'morning' | 'evening';
+  session?: 'morning' | 'evening'; // Optional for 2D
+  drawDate?: string; // Optional for 3D
   mode: string; // 'အလယ်ဒိုင်' | 'ဒိုင်ကြီး' | 'အေးဂျင့်'
   
   // Financial Snapshot

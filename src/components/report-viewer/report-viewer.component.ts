@@ -21,20 +21,26 @@ export class ReportViewerComponent implements OnInit {
   statusMessage = signal<string>('');
   
   modes = ['အားလုံး', 'အလယ်ဒိုင်', 'ဒိုင်ကြီး', 'အေးဂျင့်'];
-  activeFilter = signal(this.modes[0]);
+  activeModeFilter = signal(this.modes[0]);
+
+  lotteryTypes = ['အားလုံး', '2D', '3D'];
+  activeTypeFilter = signal(this.lotteryTypes[0]);
 
   filteredReports = computed(() => {
     const reports = this.allReports();
-    const filter = this.activeFilter();
-    if (filter === 'အားလုံး') {
-      return reports;
-    }
-    return reports.filter(r => r.mode === filter);
+    const modeFilter = this.activeModeFilter();
+    const typeFilter = this.activeTypeFilter();
+
+    return reports.filter(r => {
+      const modeMatch = modeFilter === 'အားလုံး' || r.mode === modeFilter;
+      const typeMatch = typeFilter === 'အားလုံး' || r.lotteryType === typeFilter;
+      return modeMatch && typeMatch;
+    });
   });
   
   reportGrid = computed<GridCell[]>(() => {
     const report = this.selectedReport();
-    if (!report) return [];
+    if (!report || report.lotteryType !== '2D') return [];
     
     const data = new Map(report.lotteryData);
     const cells: GridCell[] = [];
@@ -45,6 +51,13 @@ export class ReportViewerComponent implements OnInit {
     }
     return cells;
   });
+
+  reportList = computed(() => {
+    const report = this.selectedReport();
+    if (!report || report.lotteryType !== '3D') return [];
+    return [...report.lotteryData].sort((a,b) => a[0].localeCompare(b[0])).map(([number, amount]) => ({ number, amount: Number(amount) }));
+  });
+
 
   weeklySummary = computed(() => this.calculateSummaryForPeriod('week'));
   monthlySummary = computed(() => this.calculateSummaryForPeriod('month'));
@@ -120,8 +133,12 @@ export class ReportViewerComponent implements OnInit {
     window.print();
   }
 
-  setFilter(mode: string): void {
-    this.activeFilter.set(mode);
+  setModeFilter(mode: string): void {
+    this.activeModeFilter.set(mode);
+  }
+  
+  setTypeFilter(type: string): void {
+    this.activeTypeFilter.set(type);
   }
 
   closePanel(): void {

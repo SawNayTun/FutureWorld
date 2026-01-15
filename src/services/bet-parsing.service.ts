@@ -10,8 +10,8 @@ const ODD_DIGITS = ['1', '3', '5', '7', '9'];
 @Injectable({ providedIn: 'root' })
 export class BetParsingService {
 
-  parse(input: string): Map<string, number> {
-    const burmeseToEnglishMap: { [key: string]: string } = { 'အပူး': 'apu', 'ညီကို': 'nk', 'ပါဝါ': 'pao', 'နက်ခတ်': 'nat', 'စုံစုံ': 'ss', 'မမ': 'mm', 'စုံမ': 'sm', 'မစုံ': 'ms', 'ဆယ်ပြည့်': 'sp', 'အကုန်': 'all', 'ဘူဘဒိတ်': 'bb', 'ထိပ်': 't', 'ပိတ်': 'p', 'အပါ': 'a', 'ခွေ': 'k', 'ဗြိတ်': 'v', 'ဘဒိတ်': 'b', 'အကပ်': 'ak' };
+  parse(input: string, lotteryType: '2D' | '3D'): Map<string, number> {
+    const burmeseToEnglishMap: { [key: string]: string } = { 'အပူး': 'apu', 'ညီကို': 'nk', 'ပါဝါ': 'pao', 'နက်ခတ်': 'nat', 'စုံစုံ': 'ss', 'မမ': 'mm', 'စုံမ': 'sm', 'မစုံ': 'ms', 'ဆယ်ပြည့်': 'sp', 'အကုန်': 'all', 'ဘူဘဒိတ်': 'bb', 'ထိပ်': 't', 'ပိတ်': 'p', 'အပါ': 'a', 'ခွေ': 'k', 'ဗြိတ်': 'v', 'ဘဒိတ်': 'b', 'အကပ်': 'ak', 'ပတ်လည်': 'palei' };
     let processedInput = input;
     for (const burmese of Object.keys(burmeseToEnglishMap)) {
         const regex = new RegExp(burmese, 'g');
@@ -30,13 +30,14 @@ export class BetParsingService {
     const newAmounts = new Map<string, number>();
     const entries = processedInput.replace(/[=/၊,]/g, ' ').split(/\s+/).map(s => s.trim()).filter(Boolean);
     
-    const add = (n: string, a: number) => { if (n && n.length === 2 && !isNaN(parseInt(n))) { newAmounts.set(n, (newAmounts.get(n) || 0) + a); } };
-    const addPair = (n: string, a: number) => { add(n, a); if (n[0] !== n[1]) { add(n.split('').reverse().join(''), a); } };
-    
+    const add2D = (n: string, a: number) => { if (n && n.length === 2 && !isNaN(parseInt(n))) { newAmounts.set(n, (newAmounts.get(n) || 0) + a); } };
+    const addPair2D = (n: string, a: number) => { add2D(n, a); if (n[0] !== n[1]) { add2D(n.split('').reverse().join(''), a); } };
+
+    const add3D = (n: string, a: number) => { if (n && n.length === 3 && !isNaN(parseInt(n))) { newAmounts.set(n, (newAmounts.get(n) || 0) + a); } };
+
     for (let i = 0; i < entries.length; i += 2) {
         if (i + 1 >= entries.length) continue;
         let numPart = entries[i].toLowerCase();
-        
         let amountStr = entries[i+1];
         let amount: number;
 
@@ -49,14 +50,42 @@ export class BetParsingService {
 
         if (isNaN(amount)) continue;
 
-        if (numPart.endsWith('r')) { const baseNum = numPart.slice(0, -1); if (baseNum.length === 2 && !isNaN(parseInt(baseNum))) { const halfAmount = amount / 2; add(baseNum, halfAmount); add(baseNum.split('').reverse().join(''), halfAmount); continue; } }
-        if (['apu'].includes(numPart)) { for (let j = 0; j < 10; j++) add(`${j}${j}`, amount); } else if (['nk'].includes(numPart)) { NYI_KO_NUMBERS.forEach(n => addPair(n, amount)); } else if (['pao'].includes(numPart)) { POWER_NUMBERS.forEach(n => addPair(n, amount)); } else if (['nat'].includes(numPart)) { NAKHAT_NUMBERS.forEach(n => addPair(n, amount)); } else if (['ss'].includes(numPart)) { EVEN_DIGITS.forEach(d1 => EVEN_DIGITS.forEach(d2 => add(`${d1}${d2}`, amount))); } else if (['mm'].includes(numPart)) { ODD_DIGITS.forEach(d1 => ODD_DIGITS.forEach(d2 => add(`${d1}${d2}`, amount))); } else if (['sm'].includes(numPart)) { EVEN_DIGITS.forEach(d1 => ODD_DIGITS.forEach(d2 => add(`${d1}${d2}`, amount))); } else if (['ms'].includes(numPart)) { ODD_DIGITS.forEach(d1 => EVEN_DIGITS.forEach(d2 => add(`${d1}${d2}`, amount))); } else if (['sp'].includes(numPart)) { ['19', '28', '37', '46', '55'].forEach(n => addPair(n, amount)); } else if (['all'].includes(numPart)) { for (let j = 0; j < 100; j++) add(j.toString().padStart(2, '0'), amount); } else if (['bb'].includes(numPart)) { for (let j = 0; j < 100; j++) { const numStr = j.toString().padStart(2, '0'); if ((parseInt(numStr[0], 10) + parseInt(numStr[1], 10)) % 10 === 0) add(numStr, amount); } } else {
-            let handled = false; const lastChar = numPart.slice(-1); const firstPart = numPart.slice(0, -1);
-            if (firstPart.length > 0 && !isNaN(parseInt(firstPart[0]))) {
-                if (['t'].includes(lastChar) && firstPart.length === 1) { for (let j = 0; j < 10; j++) add(`${firstPart}${j}`, amount); handled = true; } else if (['p'].includes(lastChar) && firstPart.length === 1) { for (let j = 0; j < 10; j++) { if (j.toString() !== firstPart) add(`${j}${firstPart}`, amount); } handled = true; } else if (['a'].includes(lastChar) && firstPart.length === 1) { for (let j = 0; j < 100; j++) { const numStr = j.toString().padStart(2, '0'); if (numStr.includes(firstPart)) add(numStr, amount); } handled = true; } else if (['k'].includes(lastChar)) { const digits = Array.from(new Set(firstPart.split(''))); for (let d1 of digits) { for (let d2 of digits) add(`${d1}${d2}`, amount); } handled = true; } else if (['v', 'b'].includes(lastChar)) { const targetSum = parseInt(firstPart); if (!isNaN(targetSum) && targetSum >= 0 && targetSum <= 9) { for (let j = 0; j < 100; j++) { const numStr = j.toString().padStart(2, '0'); if ((parseInt(numStr[0], 10) + parseInt(numStr[1], 10)) % 10 === targetSum) add(numStr, amount); } handled = true; } }
+        // --- 2D Parsing Logic ---
+        if (lotteryType === '2D') {
+            if (numPart.endsWith('r')) { const baseNum = numPart.slice(0, -1); if (baseNum.length === 2 && !isNaN(parseInt(baseNum))) { const halfAmount = amount / 2; add2D(baseNum, halfAmount); add2D(baseNum.split('').reverse().join(''), halfAmount); continue; } }
+            if (['apu'].includes(numPart)) { for (let j = 0; j < 10; j++) add2D(`${j}${j}`, amount); } else if (['nk'].includes(numPart)) { NYI_KO_NUMBERS.forEach(n => addPair2D(n, amount)); } else if (['pao'].includes(numPart)) { POWER_NUMBERS.forEach(n => addPair2D(n, amount)); } else if (['nat'].includes(numPart)) { NAKHAT_NUMBERS.forEach(n => addPair2D(n, amount)); } else if (['ss'].includes(numPart)) { EVEN_DIGITS.forEach(d1 => EVEN_DIGITS.forEach(d2 => add2D(`${d1}${d2}`, amount))); } else if (['mm'].includes(numPart)) { ODD_DIGITS.forEach(d1 => ODD_DIGITS.forEach(d2 => add2D(`${d1}${d2}`, amount))); } else if (['sm'].includes(numPart)) { EVEN_DIGITS.forEach(d1 => ODD_DIGITS.forEach(d2 => add2D(`${d1}${d2}`, amount))); } else if (['ms'].includes(numPart)) { ODD_DIGITS.forEach(d1 => EVEN_DIGITS.forEach(d2 => add2D(`${d1}${d2}`, amount))); } else if (['sp'].includes(numPart)) { ['19', '28', '37', '46', '55'].forEach(n => addPair2D(n, amount)); } else if (['all'].includes(numPart)) { for (let j = 0; j < 100; j++) add2D(j.toString().padStart(2, '0'), amount); } else if (['bb'].includes(numPart)) { for (let j = 0; j < 100; j++) { const numStr = j.toString().padStart(2, '0'); if ((parseInt(numStr[0], 10) + parseInt(numStr[1], 10)) % 10 === 0) add2D(numStr, amount); } } else {
+                let handled = false; const lastChar = numPart.slice(-1); const firstPart = numPart.slice(0, -1);
+                if (firstPart.length > 0 && !isNaN(parseInt(firstPart[0]))) {
+                    if (['t'].includes(lastChar) && firstPart.length === 1) { for (let j = 0; j < 10; j++) add2D(`${firstPart}${j}`, amount); handled = true; } else if (['p'].includes(lastChar) && firstPart.length === 1) { for (let j = 0; j < 10; j++) { add2D(`${j}${firstPart}`, amount); } handled = true; } else if (['a'].includes(lastChar) && firstPart.length === 1) { for (let j = 0; j < 100; j++) { const numStr = j.toString().padStart(2, '0'); if (numStr.includes(firstPart)) add2D(numStr, amount); } handled = true; } else if (['k'].includes(lastChar)) { const digits = Array.from(new Set(firstPart.split(''))); for (let d1 of digits) { for (let d2 of digits) add2D(`${d1}${d2}`, amount); } handled = true; } else if (['v', 'b'].includes(lastChar)) { const targetSum = parseInt(firstPart); if (!isNaN(targetSum) && targetSum >= 0 && targetSum <= 9) { for (let j = 0; j < 100; j++) { const numStr = j.toString().padStart(2, '0'); if ((parseInt(numStr[0], 10) + parseInt(numStr[1], 10)) % 10 === targetSum) add2D(numStr, amount); } handled = true; } }
+                }
+                if (!handled && numPart.endsWith('ak')) { const digitStr = numPart.replace(/ak/g, ''); if (digitStr.length === 1 && !isNaN(parseInt(digitStr))) { const digit = parseInt(digitStr); const prev = (digit + 9) % 10; const next = (digit + 1) % 10; add2D(`${digit}${next}`, amount); add2D(`${digit}${prev}`, amount); add2D(`${next}${digit}`, amount); add2D(`${prev}${digit}`, amount); handled = true; } }
+                if (!handled && numPart.length === 2 && !isNaN(parseInt(numPart))) { add2D(numPart, amount); }
             }
-            if (!handled && numPart.endsWith('ak')) { const digitStr = numPart.replace(/ak/g, ''); if (digitStr.length === 1 && !isNaN(parseInt(digitStr))) { const digit = parseInt(digitStr); const prev = (digit + 9) % 10; const next = (digit + 1) % 10; add(`${digit}${next}`, amount); add(`${digit}${prev}`, amount); add(`${next}${digit}`, amount); add(`${prev}${digit}`, amount); handled = true; } }
-            if (!handled && numPart.length === 2 && !isNaN(parseInt(numPart))) { add(numPart, amount); }
+        // --- 3D Parsing Logic ---
+        } else if (lotteryType === '3D') {
+            if (numPart.endsWith('palei')) {
+                const baseNum = numPart.slice(0, -5);
+                if (baseNum.length === 3) {
+                    const d1 = baseNum[0], d2 = baseNum[1], d3 = baseNum[2];
+                    const perms = new Set<string>();
+                    perms.add(`${d1}${d2}${d3}`); perms.add(`${d1}${d3}${d2}`);
+                    perms.add(`${d2}${d1}${d3}`); perms.add(`${d2}${d3}${d1}`);
+                    perms.add(`${d3}${d1}${d2}`); perms.add(`${d3}${d2}${d1}`);
+                    const amountPerPerm = Math.floor(amount / perms.size);
+                    perms.forEach(p => add3D(p, amountPerPerm));
+                }
+            } else if (numPart.endsWith('t') && numPart.length === 2 && !isNaN(parseInt(numPart[0]))) {
+                const topDigit = numPart[0];
+                for (let j = 0; j < 100; j++) {
+                    add3D(`${topDigit}${j.toString().padStart(2, '0')}`, amount);
+                }
+            } else if (numPart === 'apu') {
+                for (let j = 0; j < 10; j++) {
+                    add3D(`${j}${j}${j}`, amount);
+                }
+            } else if (numPart.length === 3 && !isNaN(parseInt(numPart))) {
+                add3D(numPart, amount);
+            }
         }
     }
     return newAmounts;
