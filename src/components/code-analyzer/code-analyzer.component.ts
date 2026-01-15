@@ -2,6 +2,7 @@ import { Component, ChangeDetectionStrategy, signal, computed, effect, inject, V
 import { FormsModule } from '@angular/forms';
 import { LicenseService } from '../../services/license.service';
 import { PersistenceService } from '../../services/persistence.service';
+import { BetParsingService } from '../../services/bet-parsing.service';
 import { ReportViewerComponent } from '../report-viewer/report-viewer.component';
 import { UserGuideComponent } from '../user-guide/user-guide.component';
 import { ForwardingModalComponent, Assignments } from '../forwarding-modal/forwarding-modal.component';
@@ -22,13 +23,11 @@ interface AgentWithPerformance extends Agent {
   totalSales: number;
 }
 type OverLimitListItem = { number: string; overLimitAmount: number };
-
-// --- Constants ---
-const POWER_NUMBERS = ['05', '16', '27', '38', '49'];
-const NAKHAT_NUMBERS = ['07', '18', '35', '69', '24'];
-const NYI_KO_NUMBERS = ['01', '12', '23', '34', '45', '56', '67', '78', '89', '90'];
-const EVEN_DIGITS = ['0', '2', '4', '6', '8'];
-const ODD_DIGITS = ['1', '3', '5', '7', '9'];
+interface ProfitOptimizerSuggestion {
+  topNumbers: GridCell[];
+  suggestedHoldingIncrease: number;
+  potentialProfitIncrease: number;
+}
 
 @Component({
   selector: 'app-code-analyzer',
@@ -43,6 +42,7 @@ const ODD_DIGITS = ['1', '3', '5', '7', '9'];
 export class CodeAnalyzerComponent implements OnInit {
   licenseService = inject(LicenseService);
   persistenceService = inject(PersistenceService);
+  betParsingService = inject(BetParsingService);
 
   // --- Child Elements ---
   @ViewChild('fileInput') fileInput!: ElementRef<HTMLInputElement>;
@@ -112,19 +112,28 @@ export class CodeAnalyzerComponent implements OnInit {
   rejectedOverLimits = signal<Set<string>>(new Set<string>()); // Numbers the upper bookie rejected
   acknowledgedHeldOverLimits = signal<Map<string, number>>(new Map()); // For the held list in Middle Bookie
 
+  // --- Bet Detail Editing State ---
+  showBetDetailModal = signal(false);
+  selectedNumberForDetail = signal<string | null>(null);
+
   // --- Messaging State ---
   confirmationMessage = signal('');
   statusMessage = signal('');
+  
+  // --- Profit Optimizer State ---
+  profitOptimizerSuggestion = signal<ProfitOptimizerSuggestion | null>(null);
+  suggestionAppliedRecently = signal(false);
+
 
   // --- Computed Signals (Logic) ---
   lotteryData = computed<Map<string, BetDetail[]>>(() => {
     const data = new Map<string, BetDetail[]>();
     const history = this.betHistory();
     for (const entry of history) {
-      const parsedAmounts = this.parseBetString(entry.input);
+      const parsedAmounts = this.betParsingService.parse(entry.input);
       parsedAmounts.forEach((amount, number) => {
         const existingBets = data.get(number) || [];
-        const newBet: BetDetail = { id: crypto.randomUUID(), amount, source: entry.source };
+        const newBet: BetDetail = { id: crypto.randomUUID(), amount, source: entry.source, historyEntryId: entry.id };
         data.set(number, [...existingBets, newBet]);
       });
     }
@@ -166,6 +175,12 @@ export class CodeAnalyzerComponent implements OnInit {
 
   totalBetAmount = computed<number>(() => this.gridCells().reduce((sum, cell) => sum + cell.amount, 0));
   overLimitCells = computed(() => this.gridCells().filter(cell => cell.isOverLimit));
+
+  betsForDetailModal = computed<BetDetail[]>(() => {
+    const selectedNumber = this.selectedNumberForDetail();
+    if (!selectedNumber) return [];
+    return this.lotteryData().get(selectedNumber) || [];
+  });
 
   // --- New Over-Limit List Computations ---
   forwardableOverLimitNumbers = computed<OverLimitListItem[]>(() => {
@@ -282,6 +297,12 @@ export class CodeAnalyzerComponent implements OnInit {
     return confirmation.overLimitBets.map(b => `${b.number}=${b.amount}`).join(', ');
   });
 
+  top10OverLimitCells = computed<GridCell[]>(() => {
+    return this.overLimitCells()
+      .sort((a, b) => b.overLimitAmount - a.overLimitAmount)
+      .slice(0, 10);
+  });
+
   constructor() {
     window.addEventListener('online', () => this.isOnline.set(true));
     window.addEventListener('offline', () => this.isOnline.set(false));
@@ -303,6 +324,69 @@ export class CodeAnalyzerComponent implements OnInit {
       } else if (this.agents().length === 0) {
         this.selectedAgentForInbox.set(null);
       }
+    });
+
+    // Profit Optimizer Suggestion Effect
+    effect(() => {
+      const topNumbers = this.top10OverLimitCells();
+      const mode = this.activeMode();
+  
+      if (topNumbers.length === 0 || mode === 'အေးဂျင့်') {
+        this.profitOptimizerSuggestion.set(null);
+        return;
+      }
+  
+      const totalOverLimitOfTop10 = topNumbers.reduce((sum, cell) => sum + cell.overLimitAmount, 0);
+      const averageOverLimit = totalOverLimitOfTop10 / topNumbers.length;
+      
+      const baseSuggestion = averageOverLimit * 0.25;
+      let suggestedHoldingIncrease = 0;
+
+      // Create a "nice" rounded number for the suggestion, and avoid tiny suggestions.
+      if (baseSuggestion > 10000) {
+        suggestedHoldingIncrease = Math.round(baseSuggestion / 1000) * 1000;
+      } else if (baseSuggestion > 1000) {
+        suggestedHoldingIncrease = Math.round(baseSuggestion / 100) * 100;
+      } else if (baseSuggestion > 100) {
+        suggestedHoldingIncrease = Math.round(baseSuggestion / 50) * 50;
+      } else {
+        // The potential increase is too small to make a suggestion.
+        this.profitOptimizerSuggestion.set(null);
+        return;
+      }
+
+      if (suggestedHoldingIncrease <= 0) {
+        this.profitOptimizerSuggestion.set(null);
+        return;
+      }
+      
+      let potentialProfitIncrease = 0;
+      const commToPay = this.commissionToPay();
+      const commFromUpper = this.commissionFromUpperBookie();
+
+      for (const cell of topNumbers) {
+        const extraHeldAmount = Math.min(cell.overLimitAmount, suggestedHoldingIncrease);
+        if (mode === 'အလယ်ဒိုင်') {
+          // For Middle Bookie, profit = extraHeldAmount - (commission to agent) - (lost commission from upper bookie)
+          potentialProfitIncrease += extraHeldAmount * (1 - (commToPay / 100) - (commFromUpper / 100));
+        } else { // 'ဒိုင်ကြီး'
+          // For Main Bookie, profit = extraHeldAmount - (commission to agent)
+          potentialProfitIncrease += extraHeldAmount * (1 - (commToPay / 100));
+        }
+      }
+      
+      if (potentialProfitIncrease <= 0) {
+        this.profitOptimizerSuggestion.set(null);
+        return;
+      }
+  
+      this.profitOptimizerSuggestion.set({
+        topNumbers,
+        suggestedHoldingIncrease,
+        potentialProfitIncrease,
+      });
+      // Reset the 'applied' state whenever the suggestion re-calculates
+      this.suggestionAppliedRecently.set(false);
     });
   }
 
@@ -336,7 +420,7 @@ export class CodeAnalyzerComponent implements OnInit {
   }
 
   handleKeyboardEvents(event: KeyboardEvent) {
-    if (this.showReports() || this.showUserGuide() || this.showForwardingModal() || this.showSubmissionModal() || this.showPayoutModal()) return;
+    if (this.showReports() || this.showUserGuide() || this.showForwardingModal() || this.showSubmissionModal() || this.showPayoutModal() || this.showBetDetailModal()) return;
     const target = event.target as HTMLElement;
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) && target.id !== 'main-bet-input') return;
 
@@ -389,7 +473,7 @@ export class CodeAnalyzerComponent implements OnInit {
   }
 
   private addBetsToHistory(input: string, source: string): boolean {
-    const parsedAmounts = this.parseBetString(input);
+    const parsedAmounts = this.betParsingService.parse(input);
     if (parsedAmounts.size === 0) return false;
 
     const newEntry: HistoryEntry = {
@@ -424,6 +508,7 @@ export class CodeAnalyzerComponent implements OnInit {
     this.acknowledgedHeldOverLimits.set(new Map());
     this.individualLimits.set(new Map());
     this.showClearAllConfirmation.set(false);
+    this.profitOptimizerSuggestion.set(null);
     this.statusMessage.set('စာရင်းအားလုံးကို အောင်မြင်စွာ ဖျက်လိုက်ပါပြီ။');
     setTimeout(() => this.statusMessage.set(''), 3000);
   }
@@ -554,7 +639,7 @@ export class CodeAnalyzerComponent implements OnInit {
     }
 
     const agent = finalAgent;
-    const newAmounts = this.parseBetString(finalInputForParsing);
+    const newAmounts = this.betParsingService.parse(finalInputForParsing);
     if (newAmounts.size === 0) {
         this.statusMessage.set('ထည့်သွင်းရန် စာရင်းများမတွေ့ရှိပါ။');
         setTimeout(() => this.statusMessage.set(''), 3000);
@@ -640,7 +725,7 @@ export class CodeAnalyzerComponent implements OnInit {
       return;
     }
     const content = this.pendingSubmissions().join('\n');
-    const subTotal = Array.from(this.parseBetString(content).values()).reduce((a, b) => a + b, 0);
+    const subTotal = Array.from(this.betParsingService.parse(content).values()).reduce((a, b) => a + b, 0);
     this.submissionText.set(`Agent: ${this.bookieName()}\nSession: ${this.session()}\n---------------------------------\n${content}\n---------------------------------\nSub-Total: ${subTotal.toLocaleString()} ${this.currencySymbol()}`);
     this.showSubmissionModal.set(true);
   }
@@ -805,11 +890,8 @@ export class CodeAnalyzerComponent implements OnInit {
 
     this.rejectedOverLimits.update(set => new Set(set).add(number));
     
-    // Acknowledge the amount from the forwardable pool so it disappears from that list
     this.acknowledgedOverLimits.update(map => new Map(map).set(number, cell.overLimitAmount));
     
-    // To make the amount appear correctly in the held list, we must set the acknowledged
-    // amount for the held list to what the forwardable list *had* acknowledged before this transfer.
     this.acknowledgedHeldOverLimits.update(map => new Map(map).set(number, currentAckForward));
   }
 
@@ -833,6 +915,12 @@ export class CodeAnalyzerComponent implements OnInit {
   }
 
   private acknowledgeList(list: OverLimitListItem[], mapToUpdate: (cb: (currentMap: Map<string, number>) => Map<string, number>) => void, title: string): void {
+      if (this.profitOptimizerSuggestion() && !this.suggestionAppliedRecently()) {
+        if (!confirm('လက်ရှိတွင် အတည်မပြုရသေးသော အမြတ်အစွန်းအကြံပြုချက်တစ်ခု ရှိနေပါသည်။ လက်ရှိ Limit အဟောင်းဖြင့်သာ စာရင်းကူးရန် သေချာပါသလား?')) {
+          return;
+        }
+      }
+
       if (list.length === 0) return;
 
       const fullText = this.formatOverLimitForCopy(list, title);
@@ -865,6 +953,32 @@ export class CodeAnalyzerComponent implements OnInit {
   acknowledgeMainBookieOverLimits(): void {
       this.acknowledgeList(this.displayedOverLimitNumbers(), (cb) => this.acknowledgedOverLimits.update(cb), 'လစ်မစ်ကျော်');
   }
+  
+  formatDate(isoString: string): string {
+    if (!isoString) return '';
+    return new Date(isoString).toLocaleDateString('en-CA');
+  }
+
+  applyProfitSuggestion(): void {
+    const suggestion = this.profitOptimizerSuggestion();
+    if (!suggestion) return;
+  
+    const newLimit = this.defaultLimit() + suggestion.suggestedHoldingIncrease;
+    this.defaultLimit.set(newLimit);
+  
+    this.suggestionAppliedRecently.set(true);
+    this.statusMessage.set('Default Limit ကို အကြံပြုချက်အတိုင်း အောင်မြင်စွာ ပြင်ဆင်ပြီးပါပြီ။');
+    setTimeout(() => this.statusMessage.set(''), 3000);
+  }
+  
+  dismissProfitSuggestion(): void {
+    this.profitOptimizerSuggestion.set(null);
+    this.suggestionAppliedRecently.set(false);
+  }
+
+  showSuggestionPanelAgain(): void {
+    this.suggestionAppliedRecently.set(false);
+  }
 
   private formatOverLimitForCopy(list: OverLimitListItem[], title: string): string {
       const name = this.bookieName() || 'စာရင်း';
@@ -873,12 +987,10 @@ export class CodeAnalyzerComponent implements OnInit {
       const totalCount = list.length;
       const totalAmount = list.reduce((sum, cell) => sum + cell.overLimitAmount, 0);
 
-      // Start with the main header
       let fullText = `--- ${name} ---\n`;
       fullText += `နေ့စွဲ: ${date} (${session})\n`;
       fullText += `--------------------\n`;
       
-      // Process the list in chunks
       const chunks: string[][] = [];
       const chunkSize = 10;
       for (let i = 0; i < totalCount; i += chunkSize) {
@@ -887,65 +999,41 @@ export class CodeAnalyzerComponent implements OnInit {
           chunks.push(chunkContent);
       }
       
-      // Join chunks with a separator
       fullText += chunks.map(chunk => chunk.join('\n')).join('\n--------------------\n');
 
-      // Add the final separator and total line
       fullText += `\n--------------------\n`;
       fullText += `စုစုပေါင်း (${totalCount}) ကွက်: ${totalAmount.toLocaleString()} ${this.currencySymbol()}`;
 
       return fullText.trim();
   }
 
-  private parseBetString(input: string): Map<string, number> {
-    const burmeseToEnglishMap: { [key: string]: string } = { 'အပူး': 'apu', 'ညီကို': 'nk', 'ပါဝါ': 'pao', 'နက်ခတ်': 'nat', 'စုံစုံ': 'ss', 'မမ': 'mm', 'စုံမ': 'sm', 'မစုံ': 'ms', 'ဆယ်ပြည့်': 'sp', 'အကုန်': 'all', 'ဘူဘဒိတ်': 'bb', 'ထိပ်': 't', 'ပိတ်': 'p', 'အပါ': 'a', 'ခွေ': 'k', 'ဗြိတ်': 'v', 'ဘဒိတ်': 'b', 'အကပ်': 'ak' };
-    let processedInput = input;
-    for (const burmese of Object.keys(burmeseToEnglishMap)) {
-        const regex = new RegExp(burmese, 'g');
-        processedInput = processedInput.replace(regex, burmeseToEnglishMap[burmese]);
+  // --- Bet Detail Modal Methods ---
+  openBetDetailModal(number: string): void {
+    if ((this.lotteryData().get(number) || []).length === 0) return;
+    this.selectedNumberForDetail.set(number);
+    this.showBetDetailModal.set(true);
+  }
+
+  closeBetDetailModal(): void {
+    this.showBetDetailModal.set(false);
+    this.selectedNumberForDetail.set(null);
+  }
+
+  editBetFromDetail(betToEdit: BetDetail): void {
+    const historyEntry = this.betHistory().find(h => h.id === betToEdit.historyEntryId);
+    if (historyEntry) {
+        this.editHistoryEntry(historyEntry);
     }
+    this.closeBetDetailModal();
+  }
 
-    const burmeseDigits = ['၀', '၁', '၂', '၃', '၄', '၅', '၆', '၇', '၈', '၉'];
-    burmeseDigits.forEach((digit, index) => {
-        processedInput = processedInput.replace(new RegExp(digit, 'g'), index.toString());
-    });
-
-    const lines = processedInput.split(/\r?\n/);
-    const cleanedLines = lines.filter(line => !/^(agent|session|sub-total|total)/i.test(line.trim()) && !line.trim().startsWith('---') && line.trim() !== '');
-    processedInput = cleanedLines.join('\n');
-    
-    const newAmounts = new Map<string, number>();
-    const entries = processedInput.replace(/[=/၊,]/g, ' ').split(/\s+/).map(s => s.trim()).filter(Boolean);
-    
-    const add = (n: string, a: number) => { if (n && n.length === 2 && !isNaN(parseInt(n))) { newAmounts.set(n, (newAmounts.get(n) || 0) + a); } };
-    const addPair = (n: string, a: number) => { add(n, a); if (n[0] !== n[1]) { add(n.split('').reverse().join(''), a); } };
-    
-    for (let i = 0; i < entries.length; i += 2) {
-        if (i + 1 >= entries.length) continue;
-        let numPart = entries[i].toLowerCase();
-        
-        let amountStr = entries[i+1];
-        let amount: number;
-
-        if (amountStr.toLowerCase().endsWith('k')) {
-            const numValue = parseFloat(amountStr.slice(0, -1));
-            amount = isNaN(numValue) ? NaN : numValue * 1000;
-        } else {
-            amount = parseInt(amountStr.replace(/ကျပ်/gi, ''), 10);
-        }
-
-        if (isNaN(amount)) continue;
-
-        if (numPart.endsWith('r')) { const baseNum = numPart.slice(0, -1); if (baseNum.length === 2 && !isNaN(parseInt(baseNum))) { const halfAmount = amount / 2; add(baseNum, halfAmount); add(baseNum.split('').reverse().join(''), halfAmount); continue; } }
-        if (['apu'].includes(numPart)) { for (let j = 0; j < 10; j++) add(`${j}${j}`, amount); } else if (['nk'].includes(numPart)) { NYI_KO_NUMBERS.forEach(n => addPair(n, amount)); } else if (['pao'].includes(numPart)) { POWER_NUMBERS.forEach(n => addPair(n, amount)); } else if (['nat'].includes(numPart)) { NAKHAT_NUMBERS.forEach(n => addPair(n, amount)); } else if (['ss'].includes(numPart)) { EVEN_DIGITS.forEach(d1 => EVEN_DIGITS.forEach(d2 => add(`${d1}${d2}`, amount))); } else if (['mm'].includes(numPart)) { ODD_DIGITS.forEach(d1 => ODD_DIGITS.forEach(d2 => add(`${d1}${d2}`, amount))); } else if (['sm'].includes(numPart)) { EVEN_DIGITS.forEach(d1 => ODD_DIGITS.forEach(d2 => add(`${d1}${d2}`, amount))); } else if (['ms'].includes(numPart)) { ODD_DIGITS.forEach(d1 => EVEN_DIGITS.forEach(d2 => add(`${d1}${d2}`, amount))); } else if (['sp'].includes(numPart)) { ['19', '28', '37', '46', '55'].forEach(n => addPair(n, amount)); } else if (['all'].includes(numPart)) { for (let j = 0; j < 100; j++) add(j.toString().padStart(2, '0'), amount); } else if (['bb'].includes(numPart)) { for (let j = 0; j < 100; j++) { const numStr = j.toString().padStart(2, '0'); if ((parseInt(numStr[0], 10) + parseInt(numStr[1], 10)) % 10 === 0) add(numStr, amount); } } else {
-            let handled = false; const lastChar = numPart.slice(-1); const firstPart = numPart.slice(0, -1);
-            if (firstPart.length > 0 && !isNaN(parseInt(firstPart[0]))) {
-                if (['t'].includes(lastChar) && firstPart.length === 1) { for (let j = 0; j < 10; j++) add(`${firstPart}${j}`, amount); handled = true; } else if (['p'].includes(lastChar) && firstPart.length === 1) { for (let j = 0; j < 10; j++) { if (j.toString() !== firstPart) add(`${j}${firstPart}`, amount); } handled = true; } else if (['a'].includes(lastChar) && firstPart.length === 1) { for (let j = 0; j < 100; j++) { const numStr = j.toString().padStart(2, '0'); if (numStr.includes(firstPart)) add(numStr, amount); } handled = true; } else if (['k'].includes(lastChar)) { const digits = Array.from(new Set(firstPart.split(''))); for (let d1 of digits) { for (let d2 of digits) add(`${d1}${d2}`, amount); } handled = true; } else if (['v', 'b'].includes(lastChar)) { const targetSum = parseInt(firstPart); if (!isNaN(targetSum) && targetSum >= 0 && targetSum <= 9) { for (let j = 0; j < 100; j++) { const numStr = j.toString().padStart(2, '0'); if ((parseInt(numStr[0], 10) + parseInt(numStr[1], 10)) % 10 === targetSum) add(numStr, amount); } handled = true; } }
-            }
-            if (!handled && numPart.endsWith('ak')) { const digitStr = numPart.replace(/ak/g, ''); if (digitStr.length === 1 && !isNaN(parseInt(digitStr))) { const digit = parseInt(digitStr); const prev = (digit + 9) % 10; const next = (digit + 1) % 10; add(`${digit}${next}`, amount); add(`${digit}${prev}`, amount); add(`${next}${digit}`, amount); add(`${prev}${digit}`, amount); handled = true; } }
-            if (!handled && numPart.length === 2 && !isNaN(parseInt(numPart))) { add(numPart, amount); }
+  deleteBetFromDetail(betToDelete: BetDetail): void {
+    const historyEntry = this.betHistory().find(h => h.id === betToDelete.historyEntryId);
+    if (historyEntry) {
+        if (confirm(`"${historyEntry.input}" ဟူသော စာရင်းတစ်ခုလုံးကို ဖျက်ရန် သေချာပါသလား?`)) {
+            this.deleteHistoryEntry(historyEntry.id);
         }
     }
-    return newAmounts;
+    this.closeBetDetailModal();
   }
 }

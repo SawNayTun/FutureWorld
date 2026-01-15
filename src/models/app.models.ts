@@ -12,6 +12,7 @@ export interface BetDetail {
   id: string; // Unique identifier for each bet entry
   amount: number; 
   source: string; 
+  historyEntryId: string; // Link back to the original HistoryEntry
 }
 
 export interface GridCell { 

@@ -7,6 +7,14 @@
         </button>
       </div>
       <div class="flex items-center gap-2">
+        @if(licenseService.licenseDetails(); as details) {
+          @if(!licenseService.isAdmin()) {
+            <div class="text-xs text-slate-400 bg-slate-800 px-3 py-1.5 rounded-full">
+                <span>သက်တမ်းကုန်ဆုံးမည့်ရက်: </span>
+                <span class="font-semibold text-amber-400">{{ formatDate(details.expiryDate) }}</span>
+            </div>
+          }
+        }
         @if(activeMode() === 'ဒိုင်ကြီး' || activeMode() === 'အလယ်ဒိုင်') {
           <button (click)="openPayoutModal()" title="ပေါက်ဂဏန်း စာရင်းရှင်းရန် (Alt + P)" class="bg-green-600/80 hover:bg-green-700 text-white text-sm font-bold py-1 px-3 rounded transition">ပေါက်ဂဏန်း စာရင်းရှင်းရန်</button>
         }
@@ -87,7 +95,7 @@
                     @for (cell of gridCells(); track cell.number; let odd = $odd) {
                         <div class="grid gap-2 px-2 py-1.5 border-b border-slate-700/50" [class]="activeMode() === 'အေးဂျင့်' ? 'grid-cols-[50px_1fr_100px]' : 'grid-cols-[50px_1fr_100px_100px]'" [class.bg-slate-900/40]="odd" [class.font-semibold]="cell.amount > 0">
                             <div class="text-center font-mono pt-0.5" (click)="openLimitModal(cell.number)" [class.cursor-pointer]="activeMode() !== 'အေးဂျင့်'" [class.text-red-400]="cell.isOverLimit">{{ cell.number }}</div>
-                            <div class="font-mono text-xs truncate pt-1" [title]="cell.betsTooltip">{{ cell.betsString || '-' }}</div>
+                            <div class="font-mono text-xs truncate pt-1 rounded -ml-2 px-2" [title]="cell.betsTooltip" [class.cursor-pointer]="cell.amount > 0" [class.hover:bg-slate-700/50]="cell.amount > 0" (click)="openBetDetailModal(cell.number)">{{ cell.betsString || '-' }}</div>
                             <div class="text-right font-mono pr-2 pt-0.5" [class.text-red-400]="cell.isOverLimit" [class.text-white]="cell.amount > 0">{{ cell.amount > 0 ? cell.amount.toLocaleString() : '-' }}</div>
                             @if(activeMode() !== 'အေးဂျင့်') { <div class="text-right font-mono pr-2 pt-0.5" [class.text-red-400]="cell.isOverLimit">{{ cell.overLimitAmount > 0 ? cell.overLimitAmount.toLocaleString() : '-' }}</div> }
                         </div>
@@ -95,6 +103,57 @@
                 </div>
             </div>
           </section>
+
+          <!-- Profit Optimizer Panel -->
+          @if (profitOptimizerSuggestion(); as suggestion) {
+            @if (!suggestionAppliedRecently()) {
+              <section class="p-4 bg-slate-800/90 rounded-lg border border-teal-600 no-print">
+                <h3 class="text-base font-bold text-teal-300 mb-3">အမြတ်အစွန်း အကြံပေးစနစ် (Top {{ suggestion.topNumbers.length }})</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <!-- Top Numbers List -->
+                  <div class="bg-slate-900/50 p-2 rounded-md max-h-48 overflow-y-auto">
+                      <div class="grid grid-cols-[auto_1fr_1fr] gap-x-3 text-xs sticky top-0 bg-slate-900 py-1 px-2">
+                          <div class="font-bold text-slate-400">ဂဏန်း</div>
+                          <div class="font-bold text-slate-400 text-right">စုစုပေါင်းထိုးကြေး</div>
+                          <div class="font-bold text-slate-400 text-right">လစ်မစ်ကျော်ငွေ</div>
+                      </div>
+                      @for (cell of suggestion.topNumbers; track cell.number) {
+                          <div class="grid grid-cols-[auto_1fr_1fr] gap-x-3 p-2 font-mono text-xs border-b border-slate-700/50">
+                              <span class="font-bold text-teal-300">{{ cell.number }}</span>
+                              <span class="text-right text-slate-300">{{ cell.amount.toLocaleString() }}</span>
+                              <span class="text-right text-red-400">{{ cell.overLimitAmount.toLocaleString() }}</span>
+                          </div>
+                      }
+                  </div>
+                  <!-- Suggestion and Actions -->
+                  <div class="bg-slate-900/50 p-4 rounded-md flex flex-col justify-center text-center">
+                    <p class="text-sm text-slate-300">
+                      အကြံပြုချက်: Default Limit ကို 
+                      <span class="font-bold text-xl text-yellow-400 mx-1">{{ suggestion.suggestedHoldingIncrease.toLocaleString() }}</span>
+                      တိုးမြှင့်လိုက်ပါက၊ အသားတင်အမြတ်ငွေ
+                      <span class="font-bold text-xl text-green-400 mx-1">{{ suggestion.potentialProfitIncrease.toLocaleString('en-US', { minimumFractionDigits: 0 }) }}</span>
+                      ထပ်မံရရှိနိုင်ပါသည်။
+                    </p>
+                    <p class="text-xs text-slate-500 mt-2">(ဤတွက်ချက်မှုသည် အဆိုပါဂဏန်းများ မပေါက်သည့်အခြေအနေပေါ် မူတည်ပါသည်)</p>
+                    <div class="flex justify-center gap-3 mt-4">
+                      <button (click)="dismissProfitSuggestion()" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-6 rounded transition text-sm">မလုပ်တော့ပါ</button>
+                      <button (click)="applyProfitSuggestion()" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-6 rounded transition text-sm">အကြံပြုချက်ကို အတည်ပြုမည်</button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            } @else {
+              <section class="p-4 bg-slate-800/90 rounded-lg border border-teal-600 no-print flex justify-between items-center">
+                  <p class="text-sm text-teal-300">
+                      Limit များကို အကြံပြုချက်အတိုင်း ပြင်ဆင်ပြီးပါပြီ။ နောက်ထပ်ပြောင်းလဲမှု ပြုလုပ်လိုပါသလား။
+                  </p>
+                  <div>
+                      <button (click)="dismissProfitSuggestion()" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-1.5 px-4 rounded transition text-sm mr-2">မလုပ်တော့ပါ</button>
+                      <button (click)="showSuggestionPanelAgain()" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-1.5 px-4 rounded transition text-sm">ထပ်မံပြင်ဆင်မည်</button>
+                  </div>
+              </section>
+            }
+          }
 
           <!-- Over Limit Panels -->
           @if (activeMode() === 'အလယ်ဒိုင်') {
@@ -383,46 +442,111 @@
     </div>
   </div>
 }
+
 @if (showPayoutModal()) {
   <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
     <div class="w-full max-w-xl bg-slate-800 border border-green-700 rounded-lg shadow-2xl p-6 relative flex flex-col">
        <button (click)="showPayoutModal.set(false)" class="absolute top-4 right-4 text-slate-400 hover:text-white no-print">&times;</button>
        <h3 class="text-lg font-bold text-green-400 mb-4">ပေါက်ဂဏန်း စာရင်းရှင်းတမ်း</h3>
        <div class="flex gap-2 mb-4 no-print">
-          <input type="text" [(ngModel)]="winningNumber" placeholder="ပေါက်ဂဏန်း" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 text-lg text-center font-bold focus:ring-green-500">
-          <button (click)="calculatePayout()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-1.5 px-6 rounded transition">တွက်ချက်မည်</button>
+          <input type="text" [(ngModel)]="winningNumber" maxlength="2" placeholder="ပေါက်ဂဏန်းထည့်ပါ (ဥပမာ- 25)" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 focus:ring-green-500 font-mono text-lg">
+          <button (click)="calculatePayout()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded transition">တွက်ချက်မည်</button>
        </div>
+
        @if(payoutDetails(); as details) {
-        <div id="payout-printable-area" class="printable-area bg-slate-900/50 p-4 rounded border border-slate-700">
-          <h4 class="text-center text-xl font-bold text-yellow-300">ပေါက်ဂဏန်း: {{details.winningNumber}}</h4>
-          <div class="text-center my-2 p-2 rounded bg-slate-800">
-            <p class="text-slate-400">စုစုပေါင်း လျော်ကြေး (ကိုင်ငွေမှ)</p>
-            <p class="text-2xl font-bold text-red-400">{{ details.totalPayout.toLocaleString() }} {{ currencySymbol() }}</p>
+        <div class="printable-area bg-slate-900/50 p-4 rounded-lg flex-grow">
+          <h4 class="text-xl font-bold text-center text-yellow-300 mb-4">
+            ပေါက်ဂဏန်း: <span class="font-mono text-3xl">{{ details.winningNumber }}</span>
+          </h4>
+          <div class="grid grid-cols-2 gap-4 text-center mb-6">
+            <div class="bg-slate-800 p-3 rounded-md">
+              <p class="text-sm text-slate-400">စုစုပေါင်းထိုးကြေး (ကိုင်ငွေ)</p>
+              <p class="font-mono text-2xl font-bold text-cyan-400">{{ details.totalHeldBet.toLocaleString() }} {{ currencySymbol() }}</p>
+            </div>
+            <div class="bg-slate-800 p-3 rounded-md">
+              <p class="text-sm text-slate-400">စုစုပေါင်းလျော်ငွေ ({{ payoutRate() }}ဆ)</p>
+              <p class="font-mono text-2xl font-bold text-red-400">{{ details.totalPayout.toLocaleString() }} {{ currencySymbol() }}</p>
+            </div>
           </div>
-          <h5 class="font-bold text-slate-300 mt-4 border-b border-slate-600 pb-1 mb-2">အေးဂျင့်အလိုက် လျော်ကြေးစာရင်း</h5>
-          <div class="space-y-1 max-h-48 overflow-y-auto">
-            @for(agent of details.agentPayouts; track agent.name) {
-              <div class="flex justify-between text-sm p-1 bg-slate-800/50 rounded">
-                <span class="text-purple-300">{{agent.name}} (ထိုးကြေး: {{agent.betAmount.toLocaleString()}}):</span>
-                <span class="font-mono text-orange-300">{{agent.payout.toLocaleString()}} {{ currencySymbol() }}</span>
-              </div>
+
+          <h5 class="font-bold text-slate-300 mb-2">Agent အလိုက် လျော်ကြေးများ</h5>
+          <div class="max-h-60 overflow-y-auto">
+            @if(details.agentPayouts.length > 0) {
+              <table class="w-full text-sm text-left">
+                <thead class="bg-slate-700/50">
+                  <tr>
+                    <th class="p-2">Agent အမည်</th>
+                    <th class="p-2 text-right">ထိုးငွေ</th>
+                    <th class="p-2 text-right">လျော်ငွေ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for(agentPayout of details.agentPayouts; track agentPayout.name) {
+                    <tr class="border-b border-slate-700">
+                      <td class="p-2">{{ agentPayout.name }}</td>
+                      <td class="p-2 text-right font-mono">{{ agentPayout.betAmount.toLocaleString() }}</td>
+                      <td class="p-2 text-right font-mono text-orange-400">{{ agentPayout.payout.toLocaleString() }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            } @else {
+              <p class="text-slate-500 text-center py-4">ဤပေါက်ဂဏန်းအတွက် Agent များမှ ထိုးကြေးမရှိပါ။</p>
             }
           </div>
         </div>
-        <button (click)="printPayout()" class="mt-4 bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded transition self-center no-print">Print Payout Summary</button>
+        <div class="mt-4 text-center no-print">
+            <button (click)="printPayout()" class="bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-6 rounded transition">Print ထုတ်ရန်</button>
+        </div>
        }
     </div>
   </div>
 }
+
 @if (showClearAllConfirmation()) {
   <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
     <div class="w-full max-w-md bg-slate-800 border border-red-700 rounded-lg shadow-2xl p-6 relative">
-      <h3 class="text-lg font-bold text-red-400 mb-4">လုပ်ဆောင်ချက်ကို အတည်ပြုပါ</h3>
+      <h3 class="text-lg font-bold text-red-400 mb-4">အတည်ပြုချက်</h3>
       <p class="text-slate-300 mb-6">စာရင်းအားလုံးကို ဖျက်ရန် သေချာပါသလား? ဤလုပ်ဆောင်ချက်ကို နောက်ပြန်ပြင်၍မရပါ။</p>
-      <div class="flex gap-4 justify-end">
-        <button (click)="showClearAllConfirmation.set(false)" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded transition">မလုပ်တော့ပါ</button>
-        <button (click)="confirmClearAll()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded transition">အတည်ပြုပြီး ဖျက်မည်</button>
+      <div class="flex justify-end gap-4">
+        <button (click)="showClearAllConfirmation.set(false)" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded transition">မလုပ်တော့ပါ</button>
+        <button (click)="confirmClearAll()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition">သေချာသည်</button>
       </div>
+    </div>
+  </div>
+}
+
+<!-- Bet Detail Modal -->
+@if (showBetDetailModal()) {
+  <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" (click)="closeBetDetailModal()">
+    <div class="w-full max-w-lg bg-slate-800 border border-yellow-700 rounded-lg shadow-2xl p-6 relative" (click)="$event.stopPropagation()">
+      <button (click)="closeBetDetailModal()" class="absolute top-3 right-3 text-slate-400 hover:text-white" title="Close">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+      </button>
+
+      <h3 class="text-xl font-bold text-yellow-400 mb-4">
+        ဂဏန်း '<span class="font-mono">{{ selectedNumberForDetail() }}</span>' အတွက် အသေးစိတ်စာရင်း
+      </h3>
+      
+      <div class="max-h-[60vh] overflow-y-auto pr-2 space-y-2">
+        @for(bet of betsForDetailModal(); track bet.id) {
+          <div class="flex justify-between items-center bg-slate-900/60 p-3 rounded-md group text-sm">
+            <div class="flex-grow">
+              <p class="font-semibold text-slate-300">{{ bet.source }}</p>
+              <p class="font-mono text-lg text-yellow-300">{{ bet.amount.toLocaleString() }} {{ currencySymbol() }}</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <button (click)="editBetFromDetail(bet)" class="text-cyan-400 hover:text-cyan-300 text-sm font-semibold transition opacity-0 group-hover:opacity-100">ပြင်မည်</button>
+              <button (click)="deleteBetFromDetail(bet)" class="text-red-400 hover:text-red-300 text-sm font-semibold transition opacity-0 group-hover:opacity-100">ဖျက်မည်</button>
+            </div>
+          </div>
+        } @empty {
+          <div class="text-center py-8 text-slate-500">
+            <p>ဤဂဏန်းအတွက် စာရင်းများမရှိပါ။</p>
+          </div>
+        }
+      </div>
+
     </div>
   </div>
 }
