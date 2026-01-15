@@ -460,3 +460,52 @@
     </div>
   </div>
 }
+
+<!-- Clear All Confirmation Modal -->
+@if (showClearAllConfirmation()) {
+  <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-slate-800 border border-red-700 rounded-lg shadow-2xl p-6 text-center">
+      <h3 class="text-lg font-bold text-red-400 mb-2">အတည်ပြုချက်</h3>
+      <p class="text-slate-300 mb-6">စာရင်းအားလုံးကို ဖျက်ရန် သေချာပါသလား? ဤလုပ်ဆောင်ချက်ကို နောက်ပြန်ပြင်၍မရပါ။</p>
+      <div class="flex justify-center gap-4">
+        <button (click)="showClearAllConfirmation.set(false)" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-6 rounded transition">မလုပ်တော့ပါ</button>
+        <button (click)="confirmClearAll()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded transition">အတည်ပြုသည်</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Inbox Over-limit Confirmation Modal -->
+@if (pendingInboxConfirmation(); as confirmation) {
+  <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="w-full max-w-lg bg-slate-800 border border-orange-700 rounded-lg shadow-2xl p-6">
+      <h3 class="text-lg font-bold text-orange-400 mb-4">လစ်မစ်ကျော် စာရင်းများတွေ့ရှိသည်</h3>
+      <div class="bg-slate-900/50 p-3 rounded-md mb-4">
+        <p class="text-sm text-slate-400 mb-1">Agent: <span class="font-bold text-white">{{ confirmation.agent }}</span></p>
+        <p class="text-sm text-slate-400">လစ်မစ်ကျော်သော စာရင်းများ:</p>
+        <p class="font-mono text-orange-300 break-words">{{ overLimitConfirmationText() }}</p>
+      </div>
+      <p class="text-slate-300 mb-6">သင်မည်သို့ ဆက်လက်လုပ်ဆောင်လိုပါသလဲ?</p>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <button (click)="acceptSafeOnlyFromInbox()" class="bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded transition text-sm">လစ်မစ်အတွင်းသာ လက်ခံမည်</button>
+        <button (click)="acceptAllFromInbox()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded transition text-sm">အားလုံးကို လက်ခံမည်</button>
+        <button (click)="cancelInboxConfirmation()" class="sm:col-start-3 bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded transition text-sm">မလုပ်တော့ပါ</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Agent Submission Modal -->
+@if (showSubmissionModal()) {
+  <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="w-full max-w-lg bg-slate-800 border border-lime-700 rounded-lg shadow-2xl p-6 flex flex-col max-h-[90vh]">
+       <button (click)="showSubmissionModal.set(false)" class="absolute top-4 right-4 text-slate-400 hover:text-white">&times;</button>
+       <h3 class="text-lg font-bold text-lime-400 mb-4">ဒိုင်သို့ပို့ရန် စာရင်းချုပ်</h3>
+       <textarea readonly class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm font-mono mb-4 flex-grow">{{ submissionText() }}</textarea>
+       <div class="flex justify-end gap-3">
+         <button (click)="copyToClipboard(submissionText())" class="bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-6 rounded transition">Copy ကူးမည်</button>
+         <button (click)="share(submissionText())" class="bg-lime-600 hover:bg-lime-700 text-white font-bold py-2 px-6 rounded transition">Share လုပ်မည်</button>
+       </div>
+    </div>
+  </div>
+}

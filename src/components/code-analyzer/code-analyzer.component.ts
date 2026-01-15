@@ -773,9 +773,6 @@ export class CodeAnalyzerComponent implements OnInit {
             agent: finalAgentName,
             originalInput: betContent
         });
-        
-        const confirmationText = `Agent '${finalAgentName}' အတွက် လစ်မစ်ကျော်သော စာရင်းများရှိပါသည်။\n\nလစ်မစ်ကျော်: ${overLimitBets.map(b => `${b.number}=${b.amount}`).join(', ')}\n\nသင် အားလုံးကို လက်ခံမလား သို့မဟုတ် လစ်မစ်အတွင်းကိုသာ လက်ခံမလား?`;
-        this.confirmationMessage.set(confirmationText);
     } else {
         if (this.addBetsToHistory(betContent, finalAgentName)) {
             this.acceptedSubmissions.update(s => [...s, { agent: finalAgentName, content: betContent, timestamp: new Date(), total: Array.from(parsedBets.values()).reduce((a, b) => a + b, 0) }]);
@@ -825,11 +822,28 @@ export class CodeAnalyzerComponent implements OnInit {
   }
 
   openSubmissionModal() {
-    // ... [Identical, but needs to add lottery type to submission text if 3D] ...
+    if (this.pendingSubmissions().length === 0) return;
+    
+    const header = `${this.bookieName()} (${this.lotteryType()}${this.lotteryType() === '2D' ? ' ' + this.session() : ''}) - ${new Date().toLocaleString()}\n--------------------`;
+    const body = this.pendingSubmissions().join('\n');
+    const total = this.pendingSubmissions()
+        .map(input => this.betParsingService.parse(input, this.lotteryType()))
+        .reduce((sum, currentMap) => {
+            let mapTotal = 0;
+            currentMap.forEach(amount => mapTotal += amount);
+            return sum + mapTotal;
+        }, 0);
+
+    const footer = `--------------------\nTotal: ${total.toLocaleString()}`;
+
+    this.submissionText.set(`${header}\n${body}\n${footer}`);
+    this.showSubmissionModal.set(true);
   }
+  
   clearSubmissions() {
-    // ... [Identical] ...
+    this.pendingSubmissions.set([]);
   }
+  
   openPayoutModal() { this.showPayoutModal.set(true); this.payoutDetails.set(null); this.winningNumber.set(''); }
   
   calculatePayout() {
@@ -846,8 +860,10 @@ export class CodeAnalyzerComponent implements OnInit {
     const totalPayout = totalHeldBet * this.payoutRate();
     
     const agentPayouts = this.agents().map(agent => {
-      // Explicitly cast `b.amount` to a number to resolve potential type inference issues where both operands of '+' could be considered 'unknown'.
-      const agentBetAmount = cell.breakdown.filter(b => b.source === agent.name).reduce((sum: number, b: BetDetail) => sum + Number(b.amount), 0);
+      // FIX: The reduce operation was causing a type error. By explicitly casting the amount
+      // to 'any' before converting to a Number, we align with patterns elsewhere in the app
+      // for handling persisted data and resolve the "unknown type" error.
+      const agentBetAmount = cell.breakdown.filter(b => b.source === agent.name).reduce((sum: number, b: BetDetail) => sum + Number(b.amount as any), 0);
       return { name: agent.name, betAmount: agentBetAmount, payout: agentBetAmount * this.payoutRate() };
     }).filter(p => p.payout > 0);
     
@@ -921,11 +937,76 @@ export class CodeAnalyzerComponent implements OnInit {
   share(text: string) { if (navigator.share) navigator.share({ text }); else { this.copyToClipboard(text); alert('Copied to clipboard!'); } }
 
   async backupData(): Promise<void> {
-     // ... [backup logic needs to be updated to backup both 2D and 3D states] ...
+     try {
+        this.statusMessage.set('Backup ပြုလုပ်နေသည်...');
+        const appData = await this.persistenceService.getAllDataForBackup();
+        const licenseData = await this.licenseService.getBackupData();
+        
+        const fullBackup = {
+            appData,
+            licenseData,
+            backupVersion: '1.0',
+            timestamp: new Date().toISOString()
+        };
+
+        const jsonString = JSON.stringify(fullBackup, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const date = new Date().toISOString().split('T')[0];
+        a.href = url;
+        a.download = `future2d_backup_${date}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        this.statusMessage.set('Backup ကို အောင်မြင်စွာ ပြုလုပ်ပြီးပါပြီ။');
+     } catch(e) {
+        console.error("Backup failed", e);
+        this.statusMessage.set('Backup ပြုလုပ်ရာတွင် အမှားအယွင်း ဖြစ်ပေါ်ပါသည်။');
+     } finally {
+        setTimeout(() => this.statusMessage.set(''), 4000);
+     }
   }
 
   handleRestore(event: Event): void {
-     // ... [restore logic needs to be updated] ...
+     const file = (event.target as HTMLInputElement).files?.[0];
+     if (!file) return;
+
+     if (!confirm('Restore ပြုလုပ်ပါက လက်ရှိဒေတာအားလုံး ပျက်စီးပြီး Backup ဖိုင်ထဲမှ ဒေတာများဖြင့် အစားထိုးသွားမည်ဖြစ်သည်။ ရှေ့ဆက်ရန် သေချာပါသလား?')) {
+        (event.target as HTMLInputElement).value = ''; // Reset file input
+        return;
+     }
+
+     const reader = new FileReader();
+     reader.onload = async (e) => {
+        try {
+            this.statusMessage.set('Restore ပြုလုပ်နေသည်...');
+            const content = e.target?.result as string;
+            const backupData = JSON.parse(content);
+            
+            if (!backupData.appData || !backupData.licenseData) {
+                throw new Error('Invalid backup file format.');
+            }
+
+            await this.persistenceService.restoreAllData(backupData.appData);
+            await this.licenseService.restoreFromBackup(backupData.licenseData);
+
+            this.statusMessage.set('Restore ကို အောင်မြင်စွာ ပြုလုပ်ပြီးပါပြီ။ Application ကို ပြန်လည်စတင်နေသည်...');
+            
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+
+        } catch (err) {
+            console.error('Failed to restore data', err);
+            this.statusMessage.set('Restore ပြုလုပ်ရာတွင် အမှားအယွင်း ဖြစ်ပေါ်ပါသည်။ ဖိုင်ကိုစစ်ဆေးပါ။');
+            setTimeout(() => this.statusMessage.set(''), 4000);
+        } finally {
+            (event.target as HTMLInputElement).value = ''; // Reset file input
+        }
+     };
+     reader.readAsText(file);
   }
 
   logout() { this.licenseService.logout(); }
