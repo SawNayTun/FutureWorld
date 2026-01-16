@@ -2,7 +2,7 @@ import { Injectable, signal, inject } from '@angular/core';
 import { CryptoService } from './crypto.service';
 import { PersistenceService } from './persistence.service';
 
-type LicenseState = 'UNINITIALIZED' | 'NO_LICENSE' | 'VALID' | 'INVALID' | 'EXPIRED';
+type LicenseState = 'UNINITIALIZED' | 'NO_LICENSE' | 'VALID' | 'INVALID' | 'EXPIRED' | 'EXPIRING_SOON';
 
 export interface LicenseDetails {
   deviceId: string;
@@ -23,6 +23,7 @@ export class LicenseService {
   deviceId = signal<string | null>(null);
   licenseDetails = signal<LicenseDetails | null>(null);
   isAdmin = signal(false);
+  formattedExpiryDate = signal('');
 
   async init(): Promise<void> {
     const navigationEntries = performance.getEntriesByType("navigation");
@@ -84,13 +85,24 @@ export class LicenseService {
         return;
     }
 
-    if (new Date(details.expiryDate) < new Date()) {
+    const expiryDate = new Date(details.expiryDate);
+    if (expiryDate < new Date()) {
         this.licenseState.set('EXPIRED');
         return;
     }
 
     this.licenseDetails.set(details);
-    this.licenseState.set('VALID');
+    const sevenDaysFromNow = new Date();
+    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+
+    if (expiryDate < sevenDaysFromNow) {
+        this.licenseState.set('EXPIRING_SOON');
+        const diffTime = expiryDate.getTime() - new Date().getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        this.formattedExpiryDate.set(`${diffDays} ရက်`);
+    } else {
+        this.licenseState.set('VALID');
+    }
     this.isAdmin.set(false);
   }
 
@@ -129,6 +141,8 @@ export class LicenseService {
         this.licenseDetails.set(details);
         this.licenseState.set('VALID');
         this.isAdmin.set(false);
+        // Re-run validation to set EXPIRING_SOON state correctly after activation
+        await this.validateLicenseOnLoad(); 
         return true;
     }
     

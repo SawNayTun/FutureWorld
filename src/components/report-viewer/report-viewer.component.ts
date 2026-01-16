@@ -19,6 +19,7 @@ export class ReportViewerComponent implements OnInit {
   allReports = signal<Report[]>([]);
   selectedReport = signal<Report | null>(null);
   statusMessage = signal<string>('');
+  reportToDelete = signal<Report | null>(null);
   
   modes = ['အားလုံး', 'အလယ်ဒိုင်', 'ဒိုင်ကြီး', 'အေးဂျင့်'];
   activeModeFilter = signal(this.modes[0]);
@@ -117,14 +118,34 @@ export class ReportViewerComponent implements OnInit {
     this.selectedReport.set(null);
   }
 
-  async deleteReport(reportId: string): Promise<void> {
-    if (confirm('ဤမှတ်တမ်းကို အမှန်တကယ် ဖျက်လိုပါသလား? ဤလုပ်ဆောင်ချက်ကို နောက်ပြန်ပြင်၍မရပါ။')) {
-      await this.persistenceService.deleteReport(reportId);
+  deleteReport(report: Report): void {
+    this.reportToDelete.set(report);
+  }
+
+  cancelDelete(): void {
+    this.reportToDelete.set(null);
+  }
+
+  async confirmDelete(): Promise<void> {
+    const report = this.reportToDelete();
+    if (!report) return;
+
+    try {
+      await this.persistenceService.deleteReport(report.id);
+      
       await this.loadReports();
-      if(this.selectedReport()?.id === reportId) {
+
+      if(this.selectedReport()?.id === report.id) {
         this.selectedReport.set(null);
       }
+
       this.statusMessage.set('မှတ်တမ်းကို အောင်မြင်စွာ ဖျက်လိုက်ပါပြီ။');
+      
+    } catch (error) {
+      console.error('Failed to delete report:', error);
+      this.statusMessage.set('မှတ်တမ်းဖျက်ရာတွင် အမှားအယွင်း ဖြစ်ပေါ်ပါသည်။');
+    } finally {
+      this.reportToDelete.set(null); // Hide modal
       setTimeout(() => this.statusMessage.set(''), 3000);
     }
   }

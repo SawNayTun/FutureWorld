@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, inject, signal, OnInit, effect } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal, OnInit } from '@angular/core';
 import { CodeAnalyzerComponent } from './components/code-analyzer/code-analyzer.component';
 import { LicenseService } from './services/license.service';
 import { ActivationComponent } from './components/activation/activation.component';
@@ -15,15 +15,6 @@ export class AppComponent implements OnInit {
   licenseService = inject(LicenseService);
   persistenceService = inject(PersistenceService);
   showAdminPanel = signal(false);
-
-  constructor() {
-    effect(() => {
-      // Automatically show the admin panel if the user becomes an admin
-      if (this.licenseService.isAdmin()) {
-        this.showAdminPanel.set(true);
-      }
-    });
-  }
 
   async ngOnInit(): Promise<void> {
     // Run migration first to ensure all data is in IndexedDB

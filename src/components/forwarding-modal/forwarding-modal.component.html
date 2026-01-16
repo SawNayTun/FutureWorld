@@ -17,26 +17,24 @@
       <div class="flex h-full gap-4 overflow-x-auto pb-4">
         
         <!-- Unassigned Column -->
-        @if (assignments()['unassigned'] && assignments()['unassigned'].length > 0) {
-          <div class="bg-slate-900/50 border border-slate-700 rounded-lg w-64 flex-shrink-0 flex flex-col"
-               (dragover)="onDragOver($event, 'unassigned')"
-               (dragleave)="onDragLeave($event)"
-               (drop)="onDrop($event, 'unassigned')"
-               [class.border-yellow-500]="dragOverBookie() === 'unassigned'">
-            <div class="p-3 border-b border-slate-700">
-              <h3 class="font-bold text-yellow-400 text-center">ခွဲဝေရန်ကျန်</h3>
-              <p class="text-xs text-center text-slate-400">စုစုပေါင်း: {{ getBookieTotal('unassigned').toLocaleString() }}</p>
-            </div>
-            <div class="p-2 space-y-2 overflow-y-auto flex-grow">
-              @for (bet of assignments()['unassigned']; track bet.originalId) {
-                <div class="bg-slate-800 p-2 rounded-md flex items-center justify-between gap-3 cursor-grab transition-shadow hover:shadow-lg hover:shadow-slate-950/50 active:cursor-grabbing active:bg-slate-700" draggable="true" (dragstart)="onDragStart($event, 'unassigned', bet)">
-                  <span class="font-mono font-bold text-lg text-slate-300">{{ bet.number }}</span>
-                  <input type="number" [value]="bet.amount" readonly class="w-full bg-slate-700 text-right font-mono text-white rounded p-1 border-transparent focus:border-yellow-500 focus:ring-0">
-                </div>
-              }
-            </div>
+        <div class="bg-slate-900/50 border border-slate-700 rounded-lg w-64 flex-shrink-0 flex flex-col"
+             (dragover)="onDragOver($event, 'unassigned')"
+             (dragleave)="onDragLeave($event)"
+             (drop)="onDrop($event, 'unassigned')"
+             [class.border-yellow-500]="dragOverBookie() === 'unassigned'">
+          <div class="p-3 border-b border-slate-700">
+            <h3 class="font-bold text-yellow-400 text-center">ခွဲဝေရန်ကျန်</h3>
+            <p class="text-xs text-center text-slate-400">စုစုပေါင်း: {{ getBookieTotal('unassigned').toLocaleString() }}</p>
           </div>
-        }
+          <div class="p-2 space-y-2 overflow-y-auto flex-grow">
+            @for (bet of assignments()['unassigned']; track bet.originalId) {
+              <div class="bg-slate-800 p-2 rounded-md flex items-center justify-between gap-3 cursor-grab transition-shadow hover:shadow-lg hover:shadow-slate-950/50 active:cursor-grabbing active:bg-slate-700" draggable="true" (dragstart)="onDragStart($event, 'unassigned', bet)">
+                <span class="font-mono font-bold text-lg text-slate-300">{{ bet.number }}</span>
+                <input type="number" [value]="bet.amount" readonly class="w-full bg-slate-700 text-right font-mono text-white rounded p-1 border-transparent focus:border-yellow-500 focus:ring-0">
+              </div>
+            }
+          </div>
+        </div>
 
         <!-- Bookie Columns -->
         @for(bookie of upperBookies(); track bookie.name) {
@@ -57,14 +55,14 @@
                 @for(bet of assignments()[bookie.name]; track bet.originalId) {
                   <div class="bg-slate-800 p-2 rounded-md flex items-center justify-between gap-3 cursor-grab transition-shadow hover:shadow-lg hover:shadow-slate-950/50 active:cursor-grabbing active:bg-slate-700" draggable="true" (dragstart)="onDragStart($event, bookie.name, bet)">
                     <span class="font-mono font-bold text-lg text-slate-300">{{ bet.number }}</span>
-                    <input type="number" [value]="bet.amount" (change)="onAmountChange($event, bookie.name, bet)"
+                    <input type="number" [value]="bet.amount" (input)="onAmountChange($event, bookie.name, bet)"
                            class="w-full bg-slate-700 text-right font-mono text-white rounded p-1 border-transparent focus:border-teal-500 focus:ring-0">
                   </div>
                 }
               }
             </div>
             <div class="p-2 border-t border-slate-700">
-                <button (click)="copyToClipboard(getFormattedListForCopy(bookie.name))" class="w-full bg-sky-600 hover:bg-sky-700 text-white text-sm font-bold py-1.5 px-3 rounded transition">
+                <button (click)="copyBookieList(bookie.name)" class="w-full bg-sky-600 hover:bg-sky-700 text-white text-sm font-bold py-1.5 px-3 rounded transition">
                   စာရင်း Copy ကူးရန်
                 </button>
             </div>

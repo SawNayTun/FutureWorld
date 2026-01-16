@@ -44,10 +44,9 @@ export class PersistenceService {
     const db = await this.openDb();
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(this.STORES.APP_DATA, 'readwrite');
-      const store = transaction.objectStore(this.STORES.APP_DATA);
-      const request = store.put(value, key);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(`Failed to save item '${key}': ` + request.error);
+      transaction.objectStore(this.STORES.APP_DATA).put(value, key);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(`Transaction failed for item '${key}': ` + transaction.error);
     });
   }
 
@@ -66,10 +65,9 @@ export class PersistenceService {
     const db = await this.openDb();
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(this.STORES.REPORTS, 'readwrite');
-      const store = transaction.objectStore(this.STORES.REPORTS);
-      const request = store.put(report);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(`Failed to save report '${report.id}': ` + request.error);
+      transaction.objectStore(this.STORES.REPORTS).put(report);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(`Transaction failed for report '${report.id}': ` + transaction.error);
     });
   }
   
@@ -88,10 +86,9 @@ export class PersistenceService {
     const db = await this.openDb();
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(this.STORES.REPORTS, 'readwrite');
-        const store = transaction.objectStore(this.STORES.REPORTS);
-        const request = store.delete(reportId);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(`Failed to delete report '${reportId}': ` + request.error);
+        transaction.objectStore(this.STORES.REPORTS).delete(reportId);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(`Transaction failed for deleting report '${reportId}': ` + transaction.error);
     });
   }
   
@@ -123,12 +120,18 @@ export class PersistenceService {
     const db = await this.openDb();
     
     const clearDataTx = db.transaction(this.STORES.APP_DATA, 'readwrite');
-    await clearDataTx.objectStore(this.STORES.APP_DATA).clear();
-    await new Promise(r => clearDataTx.oncomplete = r);
+    clearDataTx.objectStore(this.STORES.APP_DATA).clear();
+    await new Promise<void>((resolve, reject) => {
+        clearDataTx.oncomplete = () => resolve();
+        clearDataTx.onerror = () => reject(clearDataTx.error);
+    });
     
     const clearReportsTx = db.transaction(this.STORES.REPORTS, 'readwrite');
-    await clearReportsTx.objectStore(this.STORES.REPORTS).clear();
-    await new Promise(r => clearReportsTx.oncomplete = r);
+    clearReportsTx.objectStore(this.STORES.REPORTS).clear();
+    await new Promise<void>((resolve, reject) => {
+        clearReportsTx.oncomplete = () => resolve();
+        clearReportsTx.onerror = () => reject(clearReportsTx.error);
+    });
 
     const writeDataTx = db.transaction(this.STORES.APP_DATA, 'readwrite');
     const dataStore = writeDataTx.objectStore(this.STORES.APP_DATA);
@@ -137,11 +140,19 @@ export class PersistenceService {
             dataStore.put(data[key], key);
         }
     }
+    await new Promise<void>((resolve, reject) => {
+        writeDataTx.oncomplete = () => resolve();
+        writeDataTx.onerror = () => reject(writeDataTx.error);
+    });
     
     if (data.reports && Array.isArray(data.reports)) {
         const writeReportsTx = db.transaction(this.STORES.REPORTS, 'readwrite');
         const reportsStore = writeReportsTx.objectStore(this.STORES.REPORTS);
         data.reports.forEach((report: Report) => reportsStore.put(report));
+        await new Promise<void>((resolve, reject) => {
+            writeReportsTx.oncomplete = () => resolve();
+            writeReportsTx.onerror = () => reject(writeReportsTx.error);
+        });
     }
   }
 

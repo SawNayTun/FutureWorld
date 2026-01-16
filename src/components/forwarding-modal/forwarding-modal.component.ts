@@ -13,6 +13,11 @@ export type Assignments = Record<string, Bet[]>; // Key is bookie name or 'unass
 export class ForwardingModalComponent implements OnInit {
   overLimitNumbers = input.required<{ number: string, amount: number }[]>();
   upperBookies = input.required<UpperBookie[]>();
+  bookieName = input.required<string>();
+  session = input.required<'morning' | 'evening'>();
+  drawDate = input.required<string>();
+  lotteryType = input.required<'2D' | '3D'>();
+  currencySymbol = input.required<'K' | '฿' | '¥'>();
   close = output<Assignments | null>();
 
   assignments = signal<Assignments>({});
@@ -30,30 +35,9 @@ export class ForwardingModalComponent implements OnInit {
     const initialAssignments: Assignments = { unassigned: [] };
     const bookies = this.upperBookies();
     
-    if (bookies.length === 0) {
-      initialAssignments['unassigned'] = this.overLimitNumbers().map((bet, index) => ({ ...bet, originalId: `${bet.number}-${index}` }));
-      this.assignments.set(initialAssignments);
-      return;
-    }
-
     bookies.forEach(b => initialAssignments[b.name] = []);
-
-    this.overLimitNumbers().forEach((bet, index) => {
-      const amountPerBookie = Math.floor(bet.amount / bookies.length);
-      let remainder = bet.amount % bookies.length;
-
-      bookies.forEach((bookie, bookieIndex) => {
-        let finalAmount = amountPerBookie;
-        if (remainder > 0) {
-          finalAmount++;
-          remainder--;
-        }
-        if (finalAmount > 0) {
-           initialAssignments[bookie.name].push({ ...bet, amount: finalAmount, originalId: `${bet.number}-${index}-${bookieIndex}` });
-        }
-      });
-    });
-
+    initialAssignments['unassigned'] = this.overLimitNumbers().map((bet, index) => ({ ...bet, originalId: `${bet.number}-${index}` }));
+    
     this.assignments.set(initialAssignments);
   }
 
@@ -105,62 +89,113 @@ export class ForwardingModalComponent implements OnInit {
   onAmountChange(event: Event, bookieName: string, bet: Bet): void {
     const inputElement = event.target as HTMLInputElement;
     const newAmount = parseInt(inputElement.value, 10);
-    const originalAmount = bet.amount;
-
+    
     if (isNaN(newAmount) || newAmount < 0) {
-      inputElement.value = originalAmount.toString();
+      inputElement.value = bet.amount.toString();
       return;
     }
-    
-    const remainder = originalAmount - newAmount;
-    
-    if (remainder < 0) { // Can't increase amount, only decrease to split
-       inputElement.value = originalAmount.toString();
-       return;
-    }
 
-    if (remainder > 0) {
-      this.assignments.update(current => {
+    this.assignments.update(current => {
         const newAssignments = JSON.parse(JSON.stringify(current));
-        
+        const originalBetList = newAssignments[bookieName];
+        const betToUpdateIndex = originalBetList.findIndex((b: Bet) => b.originalId === bet.originalId);
+        if (betToUpdateIndex === -1) return current;
+
+        const originalAmount = originalBetList[betToUpdateIndex].amount;
+        const remainder = originalAmount - newAmount;
+
         // Update current bet
         if (newAmount > 0) {
-            const betToUpdate = newAssignments[bookieName].find((b: Bet) => b.originalId === bet.originalId);
-            if(betToUpdate) betToUpdate.amount = newAmount;
+            originalBetList[betToUpdateIndex].amount = newAmount;
         } else {
-            // Remove if amount is zero
-            newAssignments[bookieName] = newAssignments[bookieName].filter((b: Bet) => b.originalId !== bet.originalId);
+            // Remove if amount is zero or less
+            originalBetList.splice(betToUpdateIndex, 1);
         }
 
-        // Add remainder to unassigned (merge if exists)
-        if (!newAssignments['unassigned']) newAssignments['unassigned'] = [];
-        const existingIndex = newAssignments['unassigned'].findIndex((b: Bet) => b.number === bet.number);
-        if(existingIndex > -1) {
-          newAssignments['unassigned'][existingIndex].amount += remainder;
-        } else {
-          newAssignments['unassigned'].push({ number: bet.number, amount: remainder, originalId: `${bet.number}-split-${Date.now()}` });
+        // Add remainder back to unassigned (merge if exists)
+        if (remainder > 0) {
+          if (!newAssignments['unassigned']) newAssignments['unassigned'] = [];
+          const existingIndex = newAssignments['unassigned'].findIndex((b: Bet) => b.number === bet.number);
+          if(existingIndex > -1) {
+            newAssignments['unassigned'][existingIndex].amount += remainder;
+          } else {
+            newAssignments['unassigned'].push({ number: bet.number, amount: remainder, originalId: `${bet.number}-split-${Date.now()}` });
+          }
+        } else if (remainder < 0) {
+            // If newAmount > originalAmount, we need to pull from unassigned
+            let deficit = -remainder;
+            const unassignedBetIndex = newAssignments['unassigned'].findIndex((b: Bet) => b.number === bet.number);
+            if (unassignedBetIndex > -1) {
+                const availableAmount = newAssignments['unassigned'][unassignedBetIndex].amount;
+                if (availableAmount >= deficit) {
+                    newAssignments['unassigned'][unassignedBetIndex].amount -= deficit;
+                    if (newAssignments['unassigned'][unassignedBetIndex].amount === 0) {
+                        newAssignments['unassigned'].splice(unassignedBetIndex, 1);
+                    }
+                } else {
+                    // Not enough in unassigned, revert change
+                    originalBetList[betToUpdateIndex].amount = originalAmount;
+                }
+            } else {
+                 // Not enough in unassigned, revert change
+                 if (betToUpdateIndex > -1) {
+                     originalBetList[betToUpdateIndex].amount = originalAmount;
+                 } else if (newAmount > 0) {
+                     originalBetList.push({ number: bet.number, amount: originalAmount, originalId: bet.originalId });
+                 }
+            }
         }
 
         return newAssignments;
       });
-    }
   }
 
   getBookieTotal(bookieName: string): number {
     return (this.assignments()[bookieName] || []).reduce((sum, bet) => sum + bet.amount, 0);
   }
 
-  getFormattedListForCopy(bookieName: string): string {
-    const bets = this.assignments()[bookieName] || [];
-    return bets.map(b => `${b.number} ${b.amount}`).join(', ');
+  private formatListForCopy(bookieNameToFormat: string): string {
+    const bets = this.assignments()[bookieNameToFormat] || [];
+    if (bets.length === 0) return 'စာရင်းမရှိပါ';
+
+    const header = `--- ${bookieNameToFormat} ---`;
+    
+    const today = new Date().toLocaleDateString('en-CA');
+    let dateLine = `နေ့စွဲ: ${this.lotteryType() === '3D' ? this.formatDate(this.drawDate()) : today}`;
+    if (this.lotteryType() === '2D') {
+        const sessionText = this.session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း';
+        dateLine += ` (${sessionText})`;
+    }
+
+    const separator = '--------------------';
+    
+    const totalAmount = this.getBookieTotal(bookieNameToFormat);
+    const totalCount = bets.length;
+
+    const sortedBets = [...bets].sort((a, b) => a.number.localeCompare(b.number));
+    const body = sortedBets.map(bet => `${bet.number} = ${bet.amount.toLocaleString()}`).join('\n');
+    
+    const footer = `စုစုပေါင်း (${totalCount}) ကွက်: ${totalAmount.toLocaleString()} ${this.currencySymbol()}`;
+
+    return `${header}\n${dateLine}\n${separator}\n${body}\n${separator}\n${footer}`;
   }
 
-  copyToClipboard(text: string): void {
+  copyBookieList(bookieName: string): void {
+    const textToCopy = this.formatListForCopy(bookieName);
+    this.copyToClipboard(textToCopy);
+  }
+
+  private copyToClipboard(text: string): void {
     if (text) {
       navigator.clipboard.writeText(text);
       this.copiedMessage.set('ကူးယူပြီးပါပြီ!');
       setTimeout(() => this.copiedMessage.set(''), 2000);
     }
+  }
+  
+  private formatDate(isoString: string): string {
+    if (!isoString) return '';
+    return new Date(isoString).toLocaleDateString('en-CA');
   }
 
   closePanel(save: boolean): void {

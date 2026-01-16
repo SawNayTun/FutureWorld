@@ -189,16 +189,71 @@
           }
 
           <!-- Over Limit Panels -->
-          @if (lotteryType() === '2D') {
+          @if (lotteryType() === '2D' && activeMode() !== 'အေးဂျင့်') {
               @if (activeMode() === 'အလယ်ဒိုင်') {
                 @if (forwardableOverLimitNumbers().length > 0) {
-                  <!-- ... [Over limit panel UI remains same] ... -->
+                  <section class="p-4 bg-slate-800/90 rounded-lg border border-purple-600 no-print">
+                    <div class="flex justify-between items-center mb-3">
+                      <h3 class="text-base font-bold text-purple-300">အပေါ်ဒိုင်သို့ လွှဲရန်စာရင်း (Forwardable)</h3>
+                      <div class="flex items-center gap-2">
+                          <button (click)="isForwardingModalOpen.set(true)" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-1 px-3 rounded transition text-xs">
+                            ကာသီးများ စီမံခန့်ခွဲရန်
+                          </button>
+                          <button (click)="acknowledgeAllForwardableOverLimits()" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded transition text-xs">အားလုံး Copy ကူးမည်</button>
+                      </div>
+                    </div>
+                    <div class="bg-slate-900/50 p-2 rounded-md max-h-48 overflow-y-auto">
+                        <div class="flex flex-wrap gap-2">
+                          @for (item of forwardableOverLimitNumbers(); track item.number) {
+                            <div class="flex items-center gap-1.5 bg-slate-800/70 py-1 pl-2.5 pr-1 rounded-full text-sm font-mono">
+                              <span class="text-purple-300 font-semibold">{{ item.number }}</span>
+                              <span class="text-white">=</span>
+                              <span class="text-white">{{ item.overLimitAmount.toLocaleString() }}</span>
+                              <button (click)="rejectOverLimit(item.number)" title="ကိုင်မည်" class="w-5 h-5 flex items-center justify-center bg-orange-600/50 hover:bg-orange-600 rounded-full text-white transition leading-none text-base">&times;</button>
+                            </div>
+                          }
+                        </div>
+                    </div>
+                  </section>
                 }
                  @if (heldOverLimitNumbers().length > 0) {
-                  <!-- ... [Over limit panel UI remains same] ... -->
+                  <section class="p-4 bg-slate-800/90 rounded-lg border border-orange-600 no-print">
+                    <div class="flex justify-between items-center mb-3">
+                      <h3 class="text-base font-bold text-orange-300">ကိုင်ထားသော ကာသီးစာရင်း (Held)</h3>
+                      <button (click)="acknowledgeAllHeldOverLimits()" class="bg-orange-600 hover:bg-orange-700 text-white font-bold py-1 px-3 rounded transition text-xs">အားလုံး Copy ကူးမည်</button>
+                    </div>
+                    <div class="bg-slate-900/50 p-2 rounded-md max-h-48 overflow-y-auto">
+                        <div class="flex flex-wrap gap-2">
+                          @for (item of heldOverLimitNumbers(); track item.number) {
+                             <div class="flex items-center gap-1.5 bg-slate-800/70 py-1 pl-2.5 pr-1 rounded-full text-sm font-mono">
+                              <span class="text-orange-300 font-semibold">{{ item.number }}</span>
+                              <span class="text-white">=</span>
+                              <span class="text-white">{{ item.overLimitAmount.toLocaleString() }}</span>
+                              <button (click)="reforwardOverLimit(item.number)" title="ပြန်လွှဲမည်" class="w-5 h-5 flex items-center justify-center bg-purple-600/50 hover:bg-purple-600 rounded-full text-white transition leading-none">↰</button>
+                            </div>
+                          }
+                        </div>
+                    </div>
+                  </section>
                 }
               } @else if (activeMode() === 'ဒိုင်ကြီး' && displayedOverLimitNumbers().length > 0) {
-                <!-- ... [Over limit panel UI remains same] ... -->
+                <section class="p-4 bg-slate-800/90 rounded-lg border border-red-600 no-print">
+                  <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-base font-bold text-red-300">လစ်မစ်ကျော်စာရင်းများ (Over-Limits)</h3>
+                    <button (click)="acknowledgeMainBookieOverLimits()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded transition text-xs">အားလုံး Copy ကူးမည်</button>
+                  </div>
+                  <div class="bg-slate-900/50 p-2 rounded-md max-h-48 overflow-y-auto">
+                      <div class="flex flex-wrap gap-2">
+                        @for (item of displayedOverLimitNumbers(); track item.number) {
+                          <div class="flex items-center gap-1.5 bg-slate-800/70 py-1 px-2.5 rounded-full text-sm font-mono">
+                            <span class="text-red-300 font-semibold">{{ item.number }}</span>
+                            <span class="text-white">=</span>
+                            <span class="text-white">{{ item.overLimitAmount.toLocaleString() }}</span>
+                          </div>
+                        }
+                      </div>
+                  </div>
+                </section>
               }
           }
 
@@ -362,7 +417,34 @@
   </div>
 </div>
 
-<!-- ... [Modals: Report Viewer, User Guide, etc.] ... -->
+<!-- Clear All Confirmation Modal -->
+@if (showClearAllConfirmation()) {
+  <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-slate-800 border border-red-700 rounded-lg shadow-2xl p-6 relative flex flex-col text-center">
+      <h3 class="text-lg font-bold text-red-400 mb-2">ဖျက်ရန် အတည်ပြုပါ</h3>
+      <p class="text-slate-300 mb-6">
+        လက်ရှိထီအမျိုးအစား ({{ lotteryType() }}) အတွက် စာရင်းများအားလုံးကို အမှန်တကယ် ဖျက်လိုပါသလား?<br>
+        <span class="text-sm text-slate-500">ဤလုပ်ဆောင်ချက်ကို နောက်ပြန်ပြင်၍မရပါ။</span>
+      </p>
+      <div class="flex justify-center gap-4">
+        <button (click)="showClearAllConfirmation.set(false)" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-8 rounded transition">
+          မလုပ်တော့ပါ
+        </button>
+        <button (click)="confirmClearAll()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-8 rounded transition">
+          ဟုတ်ကဲ့၊ ဖျက်မည်
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Modals: Report Viewer, User Guide, etc. -->
+@if (showReports()) {
+  <app-report-viewer (close)="showReports.set(false)" />
+}
+@if (showUserGuide()) {
+  <app-user-guide (close)="showUserGuide.set(false)" />
+}
 
 @if (showPayoutModal()) {
   <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
@@ -424,8 +506,6 @@
   </div>
 }
 
-<!-- ... [Other Modals] ... -->
-
 <!-- Bet Detail Modal -->
 @if (showBetDetailModal()) {
   <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" (click)="closeBetDetailModal()">
@@ -461,51 +541,16 @@
   </div>
 }
 
-<!-- Clear All Confirmation Modal -->
-@if (showClearAllConfirmation()) {
-  <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-    <div class="w-full max-w-md bg-slate-800 border border-red-700 rounded-lg shadow-2xl p-6 text-center">
-      <h3 class="text-lg font-bold text-red-400 mb-2">အတည်ပြုချက်</h3>
-      <p class="text-slate-300 mb-6">စာရင်းအားလုံးကို ဖျက်ရန် သေချာပါသလား? ဤလုပ်ဆောင်ချက်ကို နောက်ပြန်ပြင်၍မရပါ။</p>
-      <div class="flex justify-center gap-4">
-        <button (click)="showClearAllConfirmation.set(false)" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-6 rounded transition">မလုပ်တော့ပါ</button>
-        <button (click)="confirmClearAll()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded transition">အတည်ပြုသည်</button>
-      </div>
-    </div>
-  </div>
-}
-
-<!-- Inbox Over-limit Confirmation Modal -->
-@if (pendingInboxConfirmation(); as confirmation) {
-  <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-    <div class="w-full max-w-lg bg-slate-800 border border-orange-700 rounded-lg shadow-2xl p-6">
-      <h3 class="text-lg font-bold text-orange-400 mb-4">လစ်မစ်ကျော် စာရင်းများတွေ့ရှိသည်</h3>
-      <div class="bg-slate-900/50 p-3 rounded-md mb-4">
-        <p class="text-sm text-slate-400 mb-1">Agent: <span class="font-bold text-white">{{ confirmation.agent }}</span></p>
-        <p class="text-sm text-slate-400">လစ်မစ်ကျော်သော စာရင်းများ:</p>
-        <p class="font-mono text-orange-300 break-words">{{ overLimitConfirmationText() }}</p>
-      </div>
-      <p class="text-slate-300 mb-6">သင်မည်သို့ ဆက်လက်လုပ်ဆောင်လိုပါသလဲ?</p>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <button (click)="acceptSafeOnlyFromInbox()" class="bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded transition text-sm">လစ်မစ်အတွင်းသာ လက်ခံမည်</button>
-        <button (click)="acceptAllFromInbox()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded transition text-sm">အားလုံးကို လက်ခံမည်</button>
-        <button (click)="cancelInboxConfirmation()" class="sm:col-start-3 bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded transition text-sm">မလုပ်တော့ပါ</button>
-      </div>
-    </div>
-  </div>
-}
-
-<!-- Agent Submission Modal -->
-@if (showSubmissionModal()) {
-  <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-    <div class="w-full max-w-lg bg-slate-800 border border-lime-700 rounded-lg shadow-2xl p-6 flex flex-col max-h-[90vh]">
-       <button (click)="showSubmissionModal.set(false)" class="absolute top-4 right-4 text-slate-400 hover:text-white">&times;</button>
-       <h3 class="text-lg font-bold text-lime-400 mb-4">ဒိုင်သို့ပို့ရန် စာရင်းချုပ်</h3>
-       <textarea readonly class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm font-mono mb-4 flex-grow">{{ submissionText() }}</textarea>
-       <div class="flex justify-end gap-3">
-         <button (click)="copyToClipboard(submissionText())" class="bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-6 rounded transition">Copy ကူးမည်</button>
-         <button (click)="share(submissionText())" class="bg-lime-600 hover:bg-lime-700 text-white font-bold py-2 px-6 rounded transition">Share လုပ်မည်</button>
-       </div>
-    </div>
-  </div>
+<!-- Forwarding Modal -->
+@if (isForwardingModalOpen()) {
+  <app-forwarding-modal 
+    [overLimitNumbers]="forwardableNumbersForModal()"
+    [upperBookies]="upperBookies()"
+    [bookieName]="bookieName()"
+    [session]="session()"
+    [drawDate]="drawDate()"
+    [lotteryType]="lotteryType()"
+    [currencySymbol]="currencySymbol()"
+    (close)="handleForwardingModalClose($event)"
+  />
 }

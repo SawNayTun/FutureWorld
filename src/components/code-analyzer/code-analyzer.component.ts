@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, signal, computed, effect, inject, ViewChild, ElementRef, OnInit } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, computed, effect, inject, ViewChild, ElementRef, OnInit, WritableSignal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LicenseService } from '../../services/license.service';
 import { PersistenceService } from '../../services/persistence.service';
@@ -76,7 +76,6 @@ export class CodeAnalyzerComponent implements OnInit {
 
   showReports = signal(false);
   showUserGuide = signal(false);
-  showForwardingModal = signal(false);
   showClearAllConfirmation = signal(false);
   isOnline = signal(navigator.onLine);
   currencies: Array<'K' | '฿' | '¥'> = ['K', '฿', '¥'];
@@ -114,12 +113,12 @@ export class CodeAnalyzerComponent implements OnInit {
   showSubmissionModal = signal(false);
   submissionText = signal('');
   
-  forwardingAssignments = signal<Assignments | null>(null);
-  acknowledgedOverLimits = signal<Map<string, number>>(new Map()); // For Main Bookie & Forwardable list in Middle Bookie
+  acknowledgedOverLimits = signal<Map<string, number>>(new Map());
   
   // --- State for Middle Bookie Over-Limit Management ---
-  rejectedOverLimits = signal<Set<string>>(new Set<string>()); // Numbers the upper bookie rejected
-  acknowledgedHeldOverLimits = signal<Map<string, number>>(new Map()); // For the held list in Middle Bookie
+  rejectedOverLimits = signal<Set<string>>(new Set<string>());
+  acknowledgedHeldOverLimits = signal<Map<string, number>>(new Map());
+  isForwardingModalOpen = signal(false);
 
   // --- Bet Detail Editing State ---
   showBetDetailModal = signal(false);
@@ -249,40 +248,52 @@ export class CodeAnalyzerComponent implements OnInit {
   });
 
   // --- New Over-Limit List Computations ---
-  forwardableOverLimitNumbers = computed<OverLimitListItem[]>(() => {
-      if (this.activeMode() !== 'အလယ်ဒိုင်') return [];
-      const allForwardable = this.overLimitCells().filter(cell => !this.rejectedOverLimits().has(cell.number));
-      return this.filterAcknowledged(allForwardable, this.acknowledgedOverLimits());
-  });
-
-  heldOverLimitNumbers = computed<OverLimitListItem[]>(() => {
-      if (this.activeMode() !== 'အလယ်ဒိုင်') return [];
-      const allHeld = this.overLimitCells().filter(cell => this.rejectedOverLimits().has(cell.number));
-      return this.filterAcknowledged(allHeld, this.acknowledgedHeldOverLimits());
-  });
-  
-  // For 'ဒိုင်ကြီး' mode
-  displayedOverLimitNumbers = computed<OverLimitListItem[]>(() => {
-      if (this.activeMode() !== 'ဒိုင်ကြီး') return [];
-      return this.filterAcknowledged(this.overLimitCells(), this.acknowledgedOverLimits());
-  });
-
   private filterAcknowledged(list: GridCell[], acknowledgedMap: Map<string, number>): OverLimitListItem[] {
       const displayed: OverLimitListItem[] = [];
       for (const cell of list) {
-          const acknowledgedAmount = acknowledgedMap.get(cell.number);
-          if (acknowledgedAmount !== undefined) {
-              const newOverLimitPortion = cell.overLimitAmount - acknowledgedAmount;
-              if (newOverLimitPortion > 0) {
-                  displayed.push({ number: cell.number, overLimitAmount: newOverLimitPortion });
-              }
-          } else {
-              displayed.push({ number: cell.number, overLimitAmount: cell.overLimitAmount });
+          const acknowledgedAmount = acknowledgedMap.get(cell.number) || 0;
+          const newOverLimitPortion = cell.overLimitAmount - acknowledgedAmount;
+          if (newOverLimitPortion > 0) {
+              displayed.push({ number: cell.number, overLimitAmount: newOverLimitPortion });
           }
       }
       return displayed;
   }
+  
+  displayedOverLimitNumbers = computed<OverLimitListItem[]>(() => {
+    if (this.activeMode() === 'အေးဂျင့်') return [];
+    return this.filterAcknowledged(this.overLimitCells(), this.acknowledgedOverLimits());
+  });
 
+  forwardableOverLimitNumbers = computed<OverLimitListItem[]>(() => {
+      if (this.activeMode() !== 'အလယ်ဒိုင်') return [];
+      const nonRejected = this.overLimitCells().filter(cell => !this.rejectedOverLimits().has(cell.number));
+      return this.filterAcknowledged(nonRejected, this.acknowledgedOverLimits());
+  });
+
+  forwardableNumbersForModal = computed(() => {
+    return this.forwardableOverLimitNumbers().map(item => ({ number: item.number, amount: item.overLimitAmount }));
+  });
+
+  heldOverLimitNumbers = computed<OverLimitListItem[]>(() => {
+      if (this.activeMode() !== 'အလယ်ဒိုင်') return [];
+      const rejected = this.overLimitCells().filter(cell => this.rejectedOverLimits().has(cell.number));
+      return this.filterAcknowledged(rejected, this.acknowledgedHeldOverLimits());
+  });
+
+  // --- New Comma-Separated String Computations for Display ---
+  commaSeparatedDisplayedOverLimits = computed(() => {
+    return this.displayedOverLimitNumbers().map(item => `${item.number}=${item.overLimitAmount}`).join(',');
+  });
+
+  commaSeparatedForwardableOverLimits = computed(() => {
+    return this.forwardableOverLimitNumbers().map(item => `${item.number}=${item.overLimitAmount}`).join(',');
+  });
+
+  commaSeparatedHeldOverLimits = computed(() => {
+    return this.heldOverLimitNumbers().map(item => `${item.number}=${item.overLimitAmount}`).join(',');
+  });
+  
   // --- Financial Computations ---
   totalOverLimitAmount = computed<number>(() => this.overLimitCells().reduce((sum, cell) => sum + cell.overLimitAmount, 0));
 
@@ -334,10 +345,6 @@ export class CodeAnalyzerComponent implements OnInit {
     return agents;
   });
   
-  overLimitForModal = computed(() => {
-    return this.overLimitCells().map(n => ({ number: n.number, amount: n.overLimitAmount })).filter(n => n.amount > 0);
-  });
-
   isInboxSubmitDisabled = computed(() => {
     const input = this.inboxInput();
     if (!input.trim()) return true;
@@ -484,16 +491,16 @@ export class CodeAnalyzerComponent implements OnInit {
   updateCurrentState(key: keyof AppState, value: any): void {
       const type = this.lotteryType();
       this.appState.update(current => ({
-          ...current,
-          [type]: {
-              ...current[type],
-              [key]: value
-          }
+        ...current,
+        [type]: {
+          ...current[type],
+          [key]: value
+        }
       }));
   }
 
   handleKeyboardEvents(event: KeyboardEvent) {
-    if (this.showReports() || this.showUserGuide() || this.showForwardingModal() || this.showSubmissionModal() || this.showPayoutModal() || this.showBetDetailModal()) return;
+    if (this.showReports() || this.showUserGuide() || this.showSubmissionModal() || this.showPayoutModal() || this.showBetDetailModal() || this.isForwardingModalOpen()) return;
     const target = event.target as HTMLElement;
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) && target.id !== 'main-bet-input') return;
 
@@ -531,11 +538,14 @@ export class CodeAnalyzerComponent implements OnInit {
 
   setLotteryType(type: LotteryType) { this.lotteryType.set(type); }
   setActiveMode(mode: string): void { this.activeMode.set(mode); }
-  setSession(session: 'morning' | 'evening'): void { 
-      this.appState.update(current => ({
-          ...current,
-          '2D': { ...current['2D'], session }
-      })); 
+  setSession(session: 'morning' | 'evening'): void {
+    this.appState.update(current => ({
+      ...current,
+      '2D': {
+        ...current['2D'],
+        session: session
+      }
+    }));
   }
   toggleReports(): void { this.showReports.update(v => !v); }
 
@@ -557,16 +567,14 @@ export class CodeAnalyzerComponent implements OnInit {
     if (parsedAmounts.size === 0) return false;
 
     const newEntry: HistoryEntry = { id: crypto.randomUUID(), input, source };
-    this.appState.update(current => {
-      const type = this.lotteryType();
-      return {
-        ...current,
-        [type]: {
-          ...current[type],
-          betHistory: [...current[type].betHistory, newEntry]
-        }
-      };
-    });
+    const type = this.lotteryType();
+    this.appState.update(current => ({
+      ...current,
+      [type]: {
+        ...current[type],
+        betHistory: [...current[type].betHistory, newEntry]
+      }
+    }));
     return true;
   }
   
@@ -582,13 +590,13 @@ export class CodeAnalyzerComponent implements OnInit {
   confirmClearAll(): void {
     const type = this.lotteryType();
     this.appState.update(current => ({
-        ...current,
-        [type]: {
-            ...current[type],
-            betHistory: [],
-            userInput: '',
-            individualLimits: new Map()
-        }
+      ...current,
+      [type]: {
+        ...current[type],
+        betHistory: [],
+        userInput: '',
+        individualLimits: new Map()
+      }
     }));
 
     this.inboxInput.set('');
@@ -596,7 +604,6 @@ export class CodeAnalyzerComponent implements OnInit {
     this.submissionText.set('');
     this.pendingSubmissions.set([]);
     this.acceptedSubmissions.set([]);
-    this.forwardingAssignments.set(null);
     this.acknowledgedOverLimits.set(new Map());
     this.rejectedOverLimits.set(new Set());
     this.acknowledgedHeldOverLimits.set(new Map());
@@ -612,16 +619,13 @@ export class CodeAnalyzerComponent implements OnInit {
     const lastEntry = history[history.length - 1];
     if (!lastEntry) return;
 
-    this.appState.update(current => {
-      const newHistory = current[type].betHistory.slice(0, -1);
-      return {
-        ...current,
-        [type]: {
-          ...current[type],
-          betHistory: newHistory
-        }
-      };
-    });
+    this.appState.update(current => ({
+      ...current,
+      [type]: {
+        ...current[type],
+        betHistory: current[type].betHistory.slice(0, -1)
+      }
+    }));
     
     if (this.activeMode() === 'အေးဂျင့်' && lastEntry.source === this.bookieName()) {
       this.pendingSubmissions.update(submissions => {
@@ -641,10 +645,13 @@ export class CodeAnalyzerComponent implements OnInit {
     const entryToDelete = this.betHistory().find(h => h.id === idToDelete);
     if (!entryToDelete) return;
 
-    this.appState.update(s => { 
-        const newHistory = s[type].betHistory.filter(e => e.id !== idToDelete);
-        return { ...s, [type]: { ...s[type], betHistory: newHistory } };
-    });
+    this.appState.update(current => ({
+      ...current,
+      [type]: {
+        ...current[type],
+        betHistory: current[type].betHistory.filter(e => e.id !== idToDelete)
+      }
+    }));
     
     if (this.activeMode() === 'အေးဂျင့်' && entryToDelete.source === this.bookieName()) {
       this.pendingSubmissions.update(submissions => {
@@ -700,10 +707,16 @@ export class CodeAnalyzerComponent implements OnInit {
     const newLimit = prompt(`ဂဏန်း ${number} အတွက် သီးသန့်လစ်မစ် သတ်မှတ်ပါ:`, currentLimit.toString());
     if (newLimit !== null && !isNaN(parseInt(newLimit))) {
       const type = this.lotteryType();
-      this.appState.update(s => {
-          const newLimits = new Map(s[type].individualLimits);
-          newLimits.set(number, parseInt(newLimit));
-          return { ...s, [type]: { ...s[type], individualLimits: newLimits } };
+      this.appState.update(current => {
+        const newLimits = new Map(current[type].individualLimits);
+        newLimits.set(number, parseInt(newLimit));
+        return {
+          ...current,
+          [type]: {
+            ...current[type],
+            individualLimits: newLimits
+          }
+        };
       });
     }
   }
@@ -834,7 +847,7 @@ export class CodeAnalyzerComponent implements OnInit {
             return sum + mapTotal;
         }, 0);
 
-    const footer = `--------------------\nTotal: ${total.toLocaleString()}`;
+    const footer = `--------------------\nစုစုပေါင်း: ${total.toLocaleString()}`;
 
     this.submissionText.set(`${header}\n${body}\n${footer}`);
     this.showSubmissionModal.set(true);
@@ -860,10 +873,8 @@ export class CodeAnalyzerComponent implements OnInit {
     const totalPayout = totalHeldBet * this.payoutRate();
     
     const agentPayouts = this.agents().map(agent => {
-      // FIX: The reduce operation was causing a type error. By explicitly casting the amount
-      // to 'any' before converting to a Number, we align with patterns elsewhere in the app
-      // for handling persisted data and resolve the "unknown type" error.
-      const agentBetAmount = cell.breakdown.filter(b => b.source === agent.name).reduce((sum: number, b: BetDetail) => sum + Number(b.amount as any), 0);
+      // FIX: Explicitly cast `b.amount` to a number to resolve an issue where its type was inferred as `unknown`.
+      const agentBetAmount = cell.breakdown.filter(b => b.source === agent.name).reduce((sum: number, b: BetDetail) => sum + Number(b.amount), 0);
       return { name: agent.name, betAmount: agentBetAmount, payout: agentBetAmount * this.payoutRate() };
     }).filter(p => p.payout > 0);
     
@@ -871,11 +882,6 @@ export class CodeAnalyzerComponent implements OnInit {
   }
 
   printPayout() { window.print(); }
-
-  handleForwardingUpdate(assignments: Assignments | null): void {
-    if (assignments) this.forwardingAssignments.set(assignments);
-    this.showForwardingModal.set(false);
-  }
 
   async saveReport(): Promise<void> {
     if (this.lotteryData().size === 0) {
@@ -1014,22 +1020,80 @@ export class CodeAnalyzerComponent implements OnInit {
 
   // --- Over-limit Management Methods ---
   rejectOverLimit(number: string): void {
-    // ... [Identical] ...
+    // Transfer any acknowledged amount from the 'forwardable' map to the 'held' map
+    const amountToTransfer = this.acknowledgedOverLimits().get(number);
+    if (amountToTransfer) {
+      this.acknowledgedOverLimits.update(currentMap => {
+        const newMap = new Map(currentMap);
+        newMap.delete(number);
+        return newMap;
+      });
+      this.acknowledgedHeldOverLimits.update(currentMap => {
+        const newMap = new Map(currentMap);
+        newMap.set(number, (newMap.get(number) || 0) + amountToTransfer);
+        return newMap;
+      });
+    }
+
+    // Move the number to the rejected set
+    this.rejectedOverLimits.update(s => {
+      const newSet = new Set(s);
+      newSet.add(number);
+      return newSet;
+    });
   }
   reforwardOverLimit(number: string): void {
-      // ... [Identical] ...
+    // Transfer any acknowledged amount from the 'held' map back to the 'forwardable' map
+    const amountToTransfer = this.acknowledgedHeldOverLimits().get(number);
+    if (amountToTransfer) {
+        this.acknowledgedHeldOverLimits.update(currentMap => {
+            const newMap = new Map(currentMap);
+            newMap.delete(number);
+            return newMap;
+        });
+        this.acknowledgedOverLimits.update(currentMap => {
+            const newMap = new Map(currentMap);
+            newMap.set(number, (newMap.get(number) || 0) + amountToTransfer);
+            return newMap;
+        });
+    }
+    
+    // Remove the number from the rejected set
+    this.rejectedOverLimits.update(s => {
+      const newSet = new Set(s);
+      newSet.delete(number);
+      return newSet;
+    });
   }
-  private acknowledgeList(list: OverLimitListItem[], mapToUpdate: (cb: (currentMap: Map<string, number>) => Map<string, number>) => void, title: string): void {
-      // ... [Identical] ...
+
+  private acknowledgeList(list: OverLimitListItem[], mapSignal: WritableSignal<Map<string, number>>, title: string): void {
+      if (list.length === 0) return;
+      const message = this.formatOverLimitForCopy(list);
+      this.copyToClipboard(message);
+      this.statusMessage.set(`${title} စာရင်းကို copy ကူးပြီးပါပြီ။`);
+      setTimeout(() => this.statusMessage.set(''), 3000);
+
+      const fullOverLimitMap = new Map(this.overLimitCells().map(c => [c.number, c.overLimitAmount]));
+
+      mapSignal.update(currentMap => {
+        const newMap = new Map(currentMap);
+        list.forEach(item => {
+          // Get the total current over-limit amount for the number, not just the displayed portion.
+          const totalOverLimit = fullOverLimitMap.get(item.number) || 0;
+          newMap.set(item.number, totalOverLimit);
+        });
+        return newMap;
+      });
   }
+
   acknowledgeAllForwardableOverLimits(): void {
-      // ... [Identical] ...
+      this.acknowledgeList(this.forwardableOverLimitNumbers(), this.acknowledgedOverLimits, 'အပေါ်ဒိုင်သို့ လွှဲရန်စာရင်း');
   }
   acknowledgeAllHeldOverLimits(): void {
-      // ... [Identical] ...
+      this.acknowledgeList(this.heldOverLimitNumbers(), this.acknowledgedHeldOverLimits, 'ကိုင်ထားသော ကာသီးစာရင်း');
   }
   acknowledgeMainBookieOverLimits(): void {
-      // ... [Identical] ...
+      this.acknowledgeList(this.displayedOverLimitNumbers(), this.acknowledgedOverLimits, 'လစ်မစ်ကျော်စာရင်းများ');
   }
   
   formatDate(isoString: string): string {
@@ -1058,9 +1122,36 @@ export class CodeAnalyzerComponent implements OnInit {
     this.suggestionAppliedRecently.set(false);
   }
 
-  private formatOverLimitForCopy(list: OverLimitListItem[], title: string): string {
-      // ... [Identical for now] ...
-      return '';
+  private formatOverLimitForCopy(list: OverLimitListItem[]): string {
+      if (!list || list.length === 0) return '';
+
+      const header = `--- ${this.bookieName()} ---`;
+      
+      const today = new Date().toLocaleDateString('en-CA');
+      let dateLine = `နေ့စွဲ: ${today}`;
+      if (this.lotteryType() === '2D') {
+          const sessionText = this.session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း';
+          dateLine += ` (${sessionText})`;
+      }
+
+      const separator = '--------------------';
+      
+      const totalAmount = list.reduce((sum, item) => sum + item.overLimitAmount, 0);
+      const totalCount = list.length;
+
+      const bodyParts: string[] = [];
+      list.forEach((item, index) => {
+          bodyParts.push(`${item.number} = ${item.overLimitAmount}`);
+          // Add separator after every 10th item, but not if it's the very last item
+          if ((index + 1) % 10 === 0 && (index + 1) < list.length) {
+              bodyParts.push(separator);
+          }
+      });
+      const body = bodyParts.join('\n');
+      
+      const footer = `စုစုပေါင်း (${totalCount}) ကွက်: ${totalAmount.toLocaleString()} ${this.currencySymbol()}`;
+
+      return `${header}\n${dateLine}\n${separator}\n${body}\n${separator}\n${footer}`;
   }
 
   // --- Bet Detail Modal Methods ---
@@ -1086,5 +1177,32 @@ export class CodeAnalyzerComponent implements OnInit {
         }
     }
     this.closeBetDetailModal();
+  }
+
+  handleForwardingModalClose(assignments: Assignments | null): void {
+    this.isForwardingModalOpen.set(false);
+    if (assignments) {
+        // User saved. "Acknowledge" all the bets that were assigned.
+        const assignedNumbers = new Set<string>();
+        Object.values(assignments).forEach(betList => {
+            betList.forEach(bet => assignedNumbers.add(bet.number));
+        });
+        
+        const fullOverLimitMap = new Map(this.overLimitCells().map(c => [c.number, c.overLimitAmount]));
+
+        this.acknowledgedOverLimits.update(currentMap => {
+            const newMap = new Map(currentMap);
+            assignedNumbers.forEach(number => {
+                const totalOverLimit = fullOverLimitMap.get(number) || 0;
+                if (totalOverLimit > 0) {
+                    newMap.set(number, totalOverLimit);
+                }
+            });
+            return newMap;
+        });
+
+        this.statusMessage.set('ကာသီးစာရင်းများကို အောင်မြင်စွာ ခွဲဝေပြီးပါပြီ။');
+        setTimeout(() => this.statusMessage.set(''), 3000);
+    }
   }
 }
