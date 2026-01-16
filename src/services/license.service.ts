@@ -170,13 +170,28 @@ export class LicenseService {
     return this.cryptoService.encrypt(data, this.LICENSE_ENCRYPTION_KEY);
   }
 
-  logout(): void {
+  async logout(): Promise<void> {
+    const wasAdmin = this.isAdmin();
     sessionStorage.removeItem(this.LICENSE_KEY);
-    this.licenseState.set('NO_LICENSE');
-    this.deviceId.set(null);
+
     this.licenseDetails.set(null);
     this.isAdmin.set(false);
-    window.location.reload();
+
+    let stableDeviceId = await this.persistenceService.get<string>(this.DEVICE_ID_KEY);
+
+    // If the user was an admin, their device ID in persistence is a temporary placeholder.
+    // We need to clear it and generate a real one for the activation screen.
+    if (wasAdmin && stableDeviceId === 'ADMIN_DEVICE_TEMP_SESSION') {
+      stableDeviceId = null;
+    }
+
+    if (!stableDeviceId) {
+      stableDeviceId = crypto.randomUUID();
+      await this.persistenceService.set(this.DEVICE_ID_KEY, stableDeviceId);
+    }
+    this.deviceId.set(stableDeviceId);
+
+    this.licenseState.set('NO_LICENSE');
   }
 
   async getBackupData(): Promise<{ deviceId: string | null; licenseKey: string | null }> {

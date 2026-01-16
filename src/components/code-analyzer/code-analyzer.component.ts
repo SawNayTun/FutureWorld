@@ -873,8 +873,8 @@ export class CodeAnalyzerComponent implements OnInit {
     const totalPayout = totalHeldBet * this.payoutRate();
     
     const agentPayouts = this.agents().map(agent => {
-      // FIX: Explicitly cast `b.amount` to a number to resolve an issue where its type was inferred as `unknown`.
-      const agentBetAmount = cell.breakdown.filter(b => b.source === agent.name).reduce((sum: number, b: BetDetail) => sum + Number(b.amount), 0);
+      // FIX: Using a type assertion on `b.amount` to prevent type inference issues where it might be considered 'unknown'.
+      const agentBetAmount = cell.breakdown.filter(b => b.source === agent.name).reduce((sum: number, b: BetDetail) => sum + (b.amount as number), 0);
       return { name: agent.name, betAmount: agentBetAmount, payout: agentBetAmount * this.payoutRate() };
     }).filter(p => p.payout > 0);
     

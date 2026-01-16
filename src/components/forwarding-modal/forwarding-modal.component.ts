@@ -127,7 +127,8 @@ export class ForwardingModalComponent implements OnInit {
             const unassignedBetIndex = newAssignments['unassigned'].findIndex((b: Bet) => b.number === bet.number);
             if (unassignedBetIndex > -1) {
                 const availableAmount = newAssignments['unassigned'][unassignedBetIndex].amount;
-                if (availableAmount >= deficit) {
+                // FIX: Cast availableAmount to a number for comparison to prevent type errors.
+                if (Number(availableAmount) >= deficit) {
                     newAssignments['unassigned'][unassignedBetIndex].amount -= deficit;
                     if (newAssignments['unassigned'][unassignedBetIndex].amount === 0) {
                         newAssignments['unassigned'].splice(unassignedBetIndex, 1);
