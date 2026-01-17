@@ -157,15 +157,23 @@ export class LicenseGeneratorComponent implements OnInit {
     reader.onload = (e) => {
       try {
         const content = e.target?.result as string;
+        // Basic check to see if content exists
+        if (!content || !content.trim()) {
+             this.generatedLicense.set('အမှား: Device ID ဖိုင်ထဲတွင် အချက်အလက်မရှိပါ။');
+             return;
+        }
+
         const decodedId = atob(content.trim());
-        if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(decodedId)) {
+        
+        // Relaxed validation: Just check if decoded string is not empty
+        if (decodedId && decodedId.length > 0) {
           this.generatorForm.patchValue({ deviceId: decodedId });
           this.generatedLicense.set('Device ID ဖိုင်ကို အောင်မြင်စွာတင်ပြီးပါပြီ။');
         } else {
-          this.generatedLicense.set('အမှား: Device ID ဖိုင် format မှားယွင်းနေပါသည်။');
+          this.generatedLicense.set('အမှား: Device ID ဖိုင်ထဲတွင် အချက်အလက်မရှိပါ။');
         }
       } catch (err) {
-        this.generatedLicense.set('အမှား: Device ID ဖိုင်ကို ဖတ်မရပါ။');
+        this.generatedLicense.set('အမှား: Device ID ဖိုင်ကို ဖတ်မရပါ။ (Base64 Error)');
         console.error('Failed to read Device ID file', err);
       }
     };

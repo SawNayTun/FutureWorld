@@ -554,6 +554,25 @@
   </div>
 }
 
+<!-- Inbox Result Modal (Reply Voucher) -->
+@if (lastInboxResult(); as result) {
+  <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-slate-800 border border-teal-600 rounded-lg shadow-2xl p-6 relative flex flex-col">
+       <button (click)="closeInboxResult()" class="absolute top-4 right-4 text-slate-400 hover:text-white">&times;</button>
+       <h3 class="text-lg font-bold text-teal-400 mb-4">စာရင်းလက်ခံရရှိကြောင်း ပြန်စာ</h3>
+       
+       <div class="bg-slate-900 p-4 rounded-md border border-slate-700 max-h-60 overflow-y-auto mb-4">
+          <textarea readonly class="w-full h-40 bg-transparent text-slate-200 font-mono text-sm resize-none border-none focus:ring-0 p-0" [value]="inboxReplyText()"></textarea>
+       </div>
+
+       <div class="grid grid-cols-2 gap-3">
+          <button (click)="closeInboxResult()" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 rounded transition text-sm">ပိတ်မည်</button>
+          <button (click)="copyInboxReply()" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 rounded transition text-sm">Copy ကူးမည်</button>
+       </div>
+    </div>
+  </div>
+}
+
 <!-- Submission/Send to Bookie Modal -->
 @if (showSubmissionModal()) {
   <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">

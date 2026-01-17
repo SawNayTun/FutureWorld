@@ -29,6 +29,12 @@ interface ProfitOptimizerSuggestion {
   suggestedHoldingIncrease: number;
   potentialProfitIncrease: number;
 }
+interface InboxResult {
+  agent: string;
+  totalAccepted: number;
+  rejectedText?: string; // If any bets were rejected (safe only mode)
+  isAllAccepted: boolean;
+}
 
 interface AppState {
     betHistory: HistoryEntry[];
@@ -104,6 +110,7 @@ export class CodeAnalyzerComponent implements OnInit {
     originalInput: string;
   } | null>(null);
   acceptedSubmissions = signal<AcceptedSubmission[]>([]);
+  lastInboxResult = signal<InboxResult | null>(null); // For generating the reply voucher
 
   showPayoutModal = signal(false);
   winningNumber = signal('');
@@ -395,6 +402,37 @@ export class CodeAnalyzerComponent implements OnInit {
       .sort((a, b) => b.overLimitAmount - a.overLimitAmount)
       .slice(0, 10);
   });
+  
+  // --- Inbox Reply Text Generator ---
+  inboxReplyText = computed(() => {
+      const result = this.lastInboxResult();
+      if (!result) return '';
+      
+      const header = `--- ${this.bookieName()} ---`;
+      
+      const today = new Date().toLocaleDateString('en-CA');
+      let dateLine = `နေ့စွဲ: ${this.lotteryType() === '3D' ? this.formatDate(this.drawDate()) : today}`;
+      if (this.lotteryType() === '2D') {
+          const sessionText = this.session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း';
+          dateLine += ` (${sessionText})`;
+      }
+      
+      const agentLine = `Agent: ${result.agent}`;
+      const separator = '--------------------';
+      
+      let statusBody = '';
+
+      if (result.isAllAccepted) {
+          statusBody = "စာရင်းအားလုံး လက်ခံရရှိပါသည်။";
+      } else {
+          statusBody = "လစ်မစ်ကျော် ဂဏန်းများမှလွဲ၍ ကျန်စာရင်းများ လက်ခံရရှိပါသည်။\n\n(မရသော ဂဏန်းများ)\n" + (result.rejectedText || '-');
+      }
+      
+      const totalLine = `စုစုပေါင်း လက်ခံငွေ: ${result.totalAccepted.toLocaleString()} ${this.currencySymbol()}`;
+      const footer = "ကျေးဇူးတင်ပါသည်။";
+      
+      return `${header}\n${dateLine}\n${agentLine}\n${separator}\n${statusBody}\n${separator}\n${totalLine}\n${footer}`;
+  });
 
   constructor() {
     window.addEventListener('online', () => this.isOnline.set(true));
@@ -629,6 +667,7 @@ export class CodeAnalyzerComponent implements OnInit {
     this.acknowledgedHeldOverLimits.set(new Map());
     this.showClearAllConfirmation.set(false);
     this.profitOptimizerSuggestion.set(null);
+    this.lastInboxResult.set(null);
     this.statusMessage.set('စာရင်းအားလုံးကို အောင်မြင်စွာ ဖျက်လိုက်ပါပြီ။');
     setTimeout(() => this.statusMessage.set(''), 3000);
   }
@@ -898,8 +937,17 @@ export class CodeAnalyzerComponent implements OnInit {
         });
     } else {
         if (this.addBetsToHistory(betContent, finalAgentName)) {
-            this.acceptedSubmissions.update(s => [...s, { agent: finalAgentName, content: betContent, timestamp: new Date(), total: Array.from(parsedBets.values()).reduce((a: number, b: number) => a + b, 0) }]);
+            const totalAmount = Array.from(parsedBets.values()).reduce((a: number, b: number) => a + b, 0);
+            this.acceptedSubmissions.update(s => [...s, { agent: finalAgentName, content: betContent, timestamp: new Date(), total: totalAmount }]);
             this.inboxInput.set(''); // Explicitly clear input on success
+            
+            // Set success result for voucher
+            this.lastInboxResult.set({
+                agent: finalAgentName,
+                totalAccepted: totalAmount,
+                isAllAccepted: true
+            });
+            
             this.statusMessage.set(`'${finalAgentName}' ၏ စာရင်းကို အောင်မြင်စွာ လက်ခံပြီးပါပြီ။`);
             setTimeout(() => this.statusMessage.set(''), 3000);
         }
@@ -911,8 +959,16 @@ export class CodeAnalyzerComponent implements OnInit {
     if (!confirmation) return;
 
     if (this.addBetsToHistory(confirmation.originalInput, confirmation.agent)) {
-      this.acceptedSubmissions.update(s => [...s, { agent: confirmation.agent, content: confirmation.originalInput, timestamp: new Date(), total: [...confirmation.safeBets, ...confirmation.overLimitBets].reduce((sum: number, b: Bet) => sum + b.amount, 0) }]);
+      const totalAmount = [...confirmation.safeBets, ...confirmation.overLimitBets].reduce((sum: number, b: Bet) => sum + b.amount, 0);
+      this.acceptedSubmissions.update(s => [...s, { agent: confirmation.agent, content: confirmation.originalInput, timestamp: new Date(), total: totalAmount }]);
       this.inboxInput.set('');
+      
+      this.lastInboxResult.set({
+         agent: confirmation.agent,
+         totalAccepted: totalAmount,
+         isAllAccepted: true
+      });
+
       this.statusMessage.set(`'${confirmation.agent}' ၏ စာရင်းအားလုံးကို အောင်မြင်စွာ လက်ခံပြီးပါပြီ။`);
       setTimeout(() => this.statusMessage.set(''), 3000);
     }
@@ -926,9 +982,18 @@ export class CodeAnalyzerComponent implements OnInit {
     const safeBetsString = confirmation.safeBets.map(b => `${b.number} ${b.amount}`).join(' ');
 
     if (safeBetsString && this.addBetsToHistory(safeBetsString, confirmation.agent)) {
-        this.acceptedSubmissions.update(s => [...s, { agent: confirmation.agent, content: safeBetsString, timestamp: new Date(), total: confirmation.safeBets.reduce((sum: number, b: Bet) => sum + b.amount, 0) }]);
+        const safeTotal = confirmation.safeBets.reduce((sum: number, b: Bet) => sum + b.amount, 0);
+        this.acceptedSubmissions.update(s => [...s, { agent: confirmation.agent, content: safeBetsString, timestamp: new Date(), total: safeTotal }]);
+        
         const overLimitText = confirmation.overLimitBets.map(b => `${b.number}=${b.amount}`).join(', ');
-        this.confirmationMessage.set(`'${confirmation.agent}' အတွက် လစ်မစ်အတွင်း စာရင်းများကို လက်ခံပြီးပါပြီ။\n\nငြင်းပယ်လိုက်သော လစ်မစ်ကျော်စာရင်းများ: ${overLimitText}`);
+        
+        this.lastInboxResult.set({
+            agent: confirmation.agent,
+            totalAccepted: safeTotal,
+            rejectedText: overLimitText,
+            isAllAccepted: false
+        });
+
         this.statusMessage.set('လစ်မစ်အတွင်း စာရင်းများကိုသာ လက်ခံပြီးပါပြီ။');
         setTimeout(() => this.statusMessage.set(''), 4000);
     } else {
@@ -942,6 +1007,16 @@ export class CodeAnalyzerComponent implements OnInit {
   cancelInboxConfirmation(): void {
     this.pendingInboxConfirmation.set(null);
     this.confirmationMessage.set('');
+  }
+  
+  closeInboxResult(): void {
+      this.lastInboxResult.set(null);
+  }
+  
+  copyInboxReply(): void {
+      this.copyToClipboard(this.inboxReplyText());
+      this.statusMessage.set('Reply Voucher ကို ကူးယူပြီးပါပြီ။');
+      setTimeout(() => this.statusMessage.set(''), 2000);
   }
 
   openSubmissionModal() {
