@@ -10,18 +10,29 @@
     </div>
     
     <div class="p-4 bg-slate-900 rounded-md border border-slate-600">
-      <label class="text-xs font-bold text-slate-500">သင့်၏ သီးသန့်စက်ပစ္စည်း ID</label>
-      <p class="text-xs text-amber-400 mt-1">သင်၏ Device ID ကို လုံခြုံသောနေရာတွင် သိမ်းဆည်းထားရန် အောက်ပါခလုတ်မှ ဒေါင်းလုဒ်ဆွဲပါ။ ဤလုပ်ဆောင်ချက်ကို တစ်ကြိမ်သာ ပြုလုပ်နိုင်ပါသည်။</p>
-      <div class="flex items-center justify-center gap-2 mt-3">
-        @if (!hasDownloadedId()) {
-          <div class="w-full p-2 bg-slate-800 rounded text-center font-mono text-transparent select-none" style="text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);">{{ licenseService.deviceId() }}</div>
-           <button (click)="downloadDeviceId()" title="Device ID ဖိုင် ဒေါင်းလုဒ်ဆွဲရန်" class="ml-2 flex-shrink-0 bg-emerald-600/80 hover:bg-emerald-700 text-white text-sm font-bold py-2 px-4 rounded transition">
-            ဒေါင်းလုဒ်ဆွဲရန်
-          </button>
-        } @else {
-          <p class="text-sm text-green-400 text-center w-full py-2">Device ID ဖိုင်ကို ဒေါင်းလုဒ်ဆွဲပြီးဖြစ်ပါသည်။ ထပ်မံ၍ ဒေါင်းလုဒ်ဆွဲရန်မလိုအပ်ပါ။</p>
-        }
+      <label class="text-xs font-bold text-slate-500 flex items-center gap-1">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+        ဤစက်အတွက် သီးသန့် ID (ပြင်ဆင်၍မရပါ)
+      </label>
+      <p class="text-xs text-amber-400 mt-1 mb-3">သင်၏ Device ID ကို လုံခြုံသောနေရာတွင် သိမ်းဆည်းထားရန် အောက်ပါခလုတ်မှ ဒေါင်းလုဒ်ဆွဲပါ။</p>
+      
+      <div class="flex items-center justify-center gap-2">
+        <!-- Always show ID, selectable and clear -->
+        <div class="w-full p-2 bg-slate-800 rounded text-center font-mono text-slate-200 select-all border border-slate-700 text-sm break-all cursor-not-allowed opacity-80" title="System Generated ID">
+           {{ licenseService.deviceId() }}
+        </div>
+        
+        <button (click)="downloadDeviceId()" title="Device ID ဖိုင် ဒေါင်းလုဒ်ဆွဲရန်" class="ml-2 flex-shrink-0 bg-emerald-600/80 hover:bg-emerald-700 text-white text-xs font-bold py-2 px-3 rounded transition h-full">
+           {{ hasDownloadedId() ? 'ထပ်မံယူမည်' : 'ဒေါင်းလုဒ်' }}
+        </button>
       </div>
+
+      @if (hasDownloadedId()) {
+         <p class="text-xs text-green-400 text-center mt-2 flex items-center justify-center gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
+            Device ID ဖိုင်ကို ဒေါင်းလုဒ်ဆွဲပြီးပါပြီ
+         </p>
+      }
     </div>
 
     <form [formGroup]="activationForm" (ngSubmit)="activate()" class="space-y-4">
