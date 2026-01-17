@@ -9,6 +9,12 @@ export interface LicenseDetails {
   expiryDate: string; // ISO 8601 format
 }
 
+// Internal interface for shorter JSON to produce shorter keys
+interface MinifiedLicenseData {
+  d: string; // deviceId
+  e: string; // expiryDate
+}
+
 @Injectable({ providedIn: 'root' })
 export class LicenseService {
   private cryptoService = inject(CryptoService);
@@ -31,34 +37,34 @@ export class LicenseService {
     if (navigationEntries.length > 0) {
         const navigation = navigationEntries[0] as PerformanceNavigationTiming;
         if (navigation.type !== 'reload') {
-            // It's a new navigation (navigate, back_forward, etc.). Clear session.
+            // It's a new navigation. Clear session.
             sessionStorage.removeItem(this.LICENSE_KEY);
         }
-        // If navigation.type IS 'reload', we do nothing and the session persists.
     } else {
-        // If we cannot determine the navigation type, default to the secure option:
-        // clear the session to force a new login.
         sessionStorage.removeItem(this.LICENSE_KEY);
     }
     
+    // Ensure Admin Hash exists
     let adminHash = await this.persistenceService.get<string>(this.ADMIN_PASSWORD_HASH_KEY);
     if (!adminHash) {
       adminHash = await this.cryptoService.hashPassword(this.ADMIN_DEFAULT_PASSWORD);
       await this.persistenceService.set(this.ADMIN_PASSWORD_HASH_KEY, adminHash);
     }
     
-    if (sessionStorage.getItem(this.LICENSE_KEY) === 'ADMIN_SESSION_ACTIVE') {
-      await this.validateLicenseOnLoad();
-      return;
-    }
-
+    // Always load the REAL Device ID first. Do not overwrite it with admin temp IDs.
     let stableDeviceId = await this.persistenceService.get<string>(this.DEVICE_ID_KEY);
-
-    if (!stableDeviceId) {
+    if (!stableDeviceId || stableDeviceId === 'ADMIN_DEVICE_TEMP_SESSION') {
         stableDeviceId = crypto.randomUUID();
         await this.persistenceService.set(this.DEVICE_ID_KEY, stableDeviceId);
     }
     this.deviceId.set(stableDeviceId);
+
+    // Check if Admin Session is active
+    if (sessionStorage.getItem(this.LICENSE_KEY) === 'ADMIN_SESSION_ACTIVE') {
+      this.isAdmin.set(true);
+      this.licenseState.set('VALID');
+      return;
+    }
     
     await this.validateLicenseOnLoad();
   }
@@ -73,11 +79,19 @@ export class LicenseService {
     if (licenseKey === 'ADMIN_SESSION_ACTIVE') {
         this.isAdmin.set(true);
         this.licenseState.set('VALID');
-        this.deviceId.set('ADMIN_DEVICE');
         return;
     }
 
-    const details = await this.cryptoService.decrypt<LicenseDetails>(licenseKey, this.LICENSE_ENCRYPTION_KEY);
+    // Try decrypting with short format first (v2), if fail, try legacy (v1)
+    let details: LicenseDetails | null = null;
+    
+    const minified = await this.cryptoService.decrypt<MinifiedLicenseData>(licenseKey, this.LICENSE_ENCRYPTION_KEY);
+    if (minified && minified.d && minified.e) {
+        details = { deviceId: minified.d, expiryDate: minified.e };
+    } else {
+        // Fallback for older keys
+        details = await this.cryptoService.decrypt<LicenseDetails>(licenseKey, this.LICENSE_ENCRYPTION_KEY);
+    }
 
     if (!details || details.deviceId !== this.deviceId()) {
         this.licenseState.set('INVALID');
@@ -108,24 +122,32 @@ export class LicenseService {
 
   async activateLicense(licenseKey: string, masterKey: string): Promise<boolean> {
     const adminHash = await this.persistenceService.get<string>(this.ADMIN_PASSWORD_HASH_KEY);
+    
+    // 1. Check Admin Login
     if (licenseKey === masterKey && adminHash) {
         const isPasswordCorrect = await this.cryptoService.verifyPassword(masterKey, adminHash);
         if (isPasswordCorrect) {
             this.isAdmin.set(true);
             this.licenseState.set('VALID');
-            this.licenseDetails.set({
-                deviceId: 'ADMIN_DEVICE',
-                expiryDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString()
-            });
+            // We do NOT change the deviceId here anymore. The hardware ID stays in background.
+            // We just set a flag in session storage.
             sessionStorage.setItem(this.LICENSE_KEY, 'ADMIN_SESSION_ACTIVE');
-            await this.persistenceService.set(this.DEVICE_ID_KEY, 'ADMIN_DEVICE_TEMP_SESSION');
-            this.deviceId.set('ADMIN_DEVICE');
             return true;
         }
     }
 
+    // 2. Check User License Key
     if (masterKey === this.LICENSE_ENCRYPTION_KEY) {
-        const details = await this.cryptoService.decrypt<LicenseDetails>(licenseKey, this.LICENSE_ENCRYPTION_KEY);
+        let details: LicenseDetails | null = null;
+        
+        // Try short format
+        const minified = await this.cryptoService.decrypt<MinifiedLicenseData>(licenseKey, this.LICENSE_ENCRYPTION_KEY);
+        if (minified && minified.d && minified.e) {
+            details = { deviceId: minified.d, expiryDate: minified.e };
+        } else {
+            // Try legacy format
+            details = await this.cryptoService.decrypt<LicenseDetails>(licenseKey, this.LICENSE_ENCRYPTION_KEY);
+        }
         
         if (!details || details.deviceId !== this.deviceId()) {
           this.licenseState.set('INVALID');
@@ -141,7 +163,6 @@ export class LicenseService {
         this.licenseDetails.set(details);
         this.licenseState.set('VALID');
         this.isAdmin.set(false);
-        // Re-run validation to set EXPIRING_SOON state correctly after activation
         await this.validateLicenseOnLoad(); 
         return true;
     }
@@ -166,31 +187,22 @@ export class LicenseService {
     return { success: true, message: 'မာစတာကီးကို အောင်မြင်စွာပြောင်းလဲပြီးပါပြီ။' };
   }
   
-  async encryptLicenseData(data: object): Promise<string> {
-    return this.cryptoService.encrypt(data, this.LICENSE_ENCRYPTION_KEY);
+  async encryptLicenseData(data: LicenseDetails): Promise<string> {
+    // Minify data keys to reduce output string length
+    const minified: MinifiedLicenseData = {
+        d: data.deviceId,
+        e: data.expiryDate
+    };
+    return this.cryptoService.encrypt(minified, this.LICENSE_ENCRYPTION_KEY);
   }
 
   async logout(): Promise<void> {
-    const wasAdmin = this.isAdmin();
     sessionStorage.removeItem(this.LICENSE_KEY);
-
     this.licenseDetails.set(null);
     this.isAdmin.set(false);
-
-    let stableDeviceId = await this.persistenceService.get<string>(this.DEVICE_ID_KEY);
-
-    // If the user was an admin, their device ID in persistence is a temporary placeholder.
-    // We need to clear it and generate a real one for the activation screen.
-    if (wasAdmin && stableDeviceId === 'ADMIN_DEVICE_TEMP_SESSION') {
-      stableDeviceId = null;
-    }
-
-    if (!stableDeviceId) {
-      stableDeviceId = crypto.randomUUID();
-      await this.persistenceService.set(this.DEVICE_ID_KEY, stableDeviceId);
-    }
-    this.deviceId.set(stableDeviceId);
-
+    
+    // Just reset state to NO_LICENSE. Do NOT regenerate Device ID.
+    // The original Device ID is preserved in IndexedDB.
     this.licenseState.set('NO_LICENSE');
   }
 

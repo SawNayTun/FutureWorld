@@ -1,7 +1,7 @@
 import { Component, ChangeDetectionStrategy, inject, signal, OnInit, computed, output } from '@angular/core';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CryptoService } from '../../services/crypto.service';
-import { LicenseService } from '../../services/license.service';
+import { LicenseService, LicenseDetails } from '../../services/license.service';
 import { PersistenceService } from '../../services/persistence.service';
 
 interface ManagedUser {
@@ -27,6 +27,7 @@ export class LicenseGeneratorComponent implements OnInit {
 
   generatedLicense = signal('');
   isGenerating = signal(false);
+  copyStatus = signal('');
   
   managedUsers = signal<ManagedUser[]>([]);
   searchTerm = signal('');
@@ -71,8 +72,8 @@ export class LicenseGeneratorComponent implements OnInit {
     this.generatedLicense.set('ထုတ်လုပ်နေသည်...');
 
     const { deviceId, expiryDate, name } = this.generatorForm.value;
-    const licenseData = {
-      deviceId: deviceId,
+    const licenseData: LicenseDetails = {
+      deviceId: deviceId!,
       expiryDate: new Date(expiryDate!).toISOString()
     };
 
@@ -137,16 +138,16 @@ export class LicenseGeneratorComponent implements OnInit {
     }
   }
 
+  copyGeneratedLicense(): void {
+      this.copyForUser(this.generatedLicense());
+  }
+
   copyForUser(text: string): void {
-    if (text) {
-      navigator.clipboard.writeText(text);
-      this.generatedLicense.set('ကူးယူပြီးပါပြီ!');
-      setTimeout(() => {
-        if (this.generatedLicense() === 'ကူးယူပြီးပါပြီ!') {
-          this.generatedLicense.set('');
-        }
-      }, 2000);
-    }
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+        this.copyStatus.set('ကူးယူပြီးပါပြီ!');
+        setTimeout(() => this.copyStatus.set(''), 2000);
+    });
   }
 
   handleIdFileUpload(event: Event): void {
@@ -168,7 +169,8 @@ export class LicenseGeneratorComponent implements OnInit {
         // Relaxed validation: Just check if decoded string is not empty
         if (decodedId && decodedId.length > 0) {
           this.generatorForm.patchValue({ deviceId: decodedId });
-          this.generatedLicense.set('Device ID ဖိုင်ကို အောင်မြင်စွာတင်ပြီးပါပြီ။');
+          this.copyStatus.set('Device ID ဖိုင်ကို အောင်မြင်စွာတင်ပြီးပါပြီ။');
+          setTimeout(() => this.copyStatus.set(''), 2000);
         } else {
           this.generatedLicense.set('အမှား: Device ID ဖိုင်ထဲတွင် အချက်အလက်မရှိပါ။');
         }

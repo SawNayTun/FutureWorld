@@ -42,12 +42,29 @@
             </button>
           </form>
 
-          @if (generatedLicense()) {
-            <div class="mt-4 p-3 bg-slate-900/50 rounded-md">
-              <label class="block text-sm font-medium text-slate-300 mb-1">အခြေအနေ</label>
-              <p class="font-mono text-xs text-green-300 break-all">{{ generatedLicense() }}</p>
+          @if (generatedLicense() && !generatedLicense().startsWith('အမှား') && !generatedLicense().startsWith('ထုတ်လုပ်')) {
+            <div class="mt-4 p-4 bg-slate-900 rounded-md border border-indigo-500/50">
+              <div class="flex justify-between items-center mb-2">
+                  <label class="block text-sm font-bold text-indigo-300">ထုတ်လုပ်ထားသော လိုင်စင်ကီး</label>
+                  <button (click)="copyGeneratedLicense()" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-1 rounded transition flex items-center gap-1">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                     Copy
+                  </button>
+              </div>
+              <textarea readonly class="w-full h-24 bg-slate-800 text-slate-200 font-mono text-xs rounded border border-slate-700 p-2 focus:ring-indigo-500 resize-none select-all" [value]="generatedLicense()"></textarea>
+              <p class="text-xs text-slate-500 mt-1">အပေါ်ရှိ ကီးကို Copy ကူး၍ အသုံးပြုသူထံ ပေးပို့ပါ။</p>
             </div>
+          } @else if (generatedLicense()) {
+             <div class="mt-4 p-3 bg-slate-900/50 rounded-md">
+                <p class="text-sm font-mono text-amber-400 break-all">{{ generatedLicense() }}</p>
+             </div>
           }
+          
+           @if (copyStatus()) {
+              <div class="mt-2 text-center">
+                 <span class="text-sm font-bold text-green-400 bg-green-900/50 px-3 py-1 rounded-full">{{ copyStatus() }}</span>
+              </div>
+           }
         </div>
 
         <hr class="border-slate-600">
