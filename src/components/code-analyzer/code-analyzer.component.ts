@@ -124,6 +124,11 @@ export class CodeAnalyzerComponent implements OnInit {
   showBetDetailModal = signal(false);
   selectedNumberForDetail = signal<string | null>(null);
 
+  // --- Limit Management State ---
+  showLimitManagementModal = signal(false);
+  limitManageNumber = signal('');
+  limitManageAmount = signal<number>(0);
+
   // --- Messaging State ---
   confirmationMessage = signal('');
   statusMessage = signal('');
@@ -179,9 +184,9 @@ export class CodeAnalyzerComponent implements OnInit {
       const numberStr = i.toString().padStart(2, '0');
       const breakdown = data.get(numberStr) || [];
       const amount = breakdown.reduce((sum, bet) => sum + bet.amount, 0);
-      const limit = (this.activeMode() === 'ဒိုင်ကြီး' || this.activeMode() === 'အလယ်ဒိုင်') && currentIndLimits.has(numberStr)
-        ? currentIndLimits.get(numberStr)!
-        : currentDefLimit;
+      
+      const hasCustomLimit = (this.activeMode() === 'ဒိုင်ကြီး' || this.activeMode() === 'အလယ်ဒိုင်') && currentIndLimits.has(numberStr);
+      const limit = hasCustomLimit ? currentIndLimits.get(numberStr)! : currentDefLimit;
       
       const isOverLimit = amount > limit;
       const overLimitAmount = isOverLimit ? amount - limit : 0;
@@ -193,7 +198,7 @@ export class CodeAnalyzerComponent implements OnInit {
       
       const betsTooltip = breakdown.map(b => `${b.source}: ${b.amount}`).join('; ');
 
-      cells.push({ number: numberStr, amount, isOverLimit, breakdown, betsString, betsTooltip, overLimitAmount, limit });
+      cells.push({ number: numberStr, amount, isOverLimit, hasCustomLimit, breakdown, betsString, betsTooltip, overLimitAmount, limit });
     }
     return cells;
   });
@@ -210,9 +215,8 @@ export class CodeAnalyzerComponent implements OnInit {
           const amount = breakdown.reduce((sum, bet) => sum + bet.amount, 0);
           if (amount === 0) continue;
           
-          const limit = (this.activeMode() === 'ဒိုင်ကြီး' || this.activeMode() === 'အလယ်ဒိုင်') && currentIndLimits.has(numberStr)
-              ? currentIndLimits.get(numberStr)!
-              : currentDefLimit;
+          const hasCustomLimit = (this.activeMode() === 'ဒိုင်ကြီး' || this.activeMode() === 'အလယ်ဒိုင်') && currentIndLimits.has(numberStr);
+          const limit = hasCustomLimit ? currentIndLimits.get(numberStr)! : currentDefLimit;
 
           const isOverLimit = amount > limit;
           const overLimitAmount = isOverLimit ? amount - limit : 0;
@@ -220,7 +224,7 @@ export class CodeAnalyzerComponent implements OnInit {
           const betsString = amounts.length > 0 ? `(${amounts.join(', ')})` : '';
           const betsTooltip = breakdown.map(b => `${b.source}: ${b.amount}`).join('; ');
           
-          items.push({ number: numberStr, amount, isOverLimit, breakdown, betsString, betsTooltip, overLimitAmount, limit });
+          items.push({ number: numberStr, amount, isOverLimit, hasCustomLimit, breakdown, betsString, betsTooltip, overLimitAmount, limit });
       }
       return items.sort((a, b) => a.number.localeCompare(b.number));
   });
@@ -229,6 +233,13 @@ export class CodeAnalyzerComponent implements OnInit {
       const term = this.search3DTerm().toLowerCase();
       if (!term) return this.listItems();
       return this.listItems().filter(item => item.number.includes(term));
+  });
+  
+  customLimitsList = computed(() => {
+      const limits = this.individualLimits();
+      return Array.from(limits.entries())
+        .map(([number, limit]) => ({ number, limit }))
+        .sort((a, b) => a.number.localeCompare(b.number));
   });
 
   totalBetAmount = computed<number>(() => {
@@ -352,11 +363,20 @@ export class CodeAnalyzerComponent implements OnInit {
   
     const agentLineMatch = input.match(/^Agent\s*:\s*(.+)/im);
     if (agentLineMatch) return false;
+    
+    // Check for the new format: --- AgentName ---
+    const newFormatMatch = input.match(/^---\s*(.+?)\s*---/m);
+    if (newFormatMatch) return false;
   
     const lines = input.split(/\r?\n/);
     const firstLineTrimmed = lines.find(l => l.trim() !== '')?.trim();
     if (firstLineTrimmed && !firstLineTrimmed.toLowerCase().startsWith('agent') && firstLineTrimmed.includes(':')) {
         return false;
+    }
+    
+    // If there is a first line that doesn't look like a bet, we allow it (auto-detect agent logic)
+    if (firstLineTrimmed && !firstLineTrimmed.includes('=') && !/^\d+\s+\d+/.test(firstLineTrimmed)) {
+      return false;
     }
     
     return true;
@@ -500,7 +520,7 @@ export class CodeAnalyzerComponent implements OnInit {
   }
 
   handleKeyboardEvents(event: KeyboardEvent) {
-    if (this.showReports() || this.showUserGuide() || this.showSubmissionModal() || this.showPayoutModal() || this.showBetDetailModal() || this.isForwardingModalOpen()) return;
+    if (this.showReports() || this.showUserGuide() || this.showSubmissionModal() || this.showPayoutModal() || this.showBetDetailModal() || this.isForwardingModalOpen() || this.showLimitManagementModal()) return;
     const target = event.target as HTMLElement;
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) && target.id !== 'main-bet-input') return;
 
@@ -701,15 +721,24 @@ export class CodeAnalyzerComponent implements OnInit {
   }
   removeAgentUpperBookie(bookieNameToRemove: string) { this.agentUpperBookies.update(b => b.filter(bookie => bookie.name !== bookieNameToRemove)); }
 
-  openLimitModal(number: string) {
+  // --- Limit Management ---
+  openLimitModal(number: string | null = null) {
     if (this.activeMode() === 'အေးဂျင့်') return;
-    const currentLimit = this.individualLimits().get(number) || this.defaultLimit();
-    const newLimit = prompt(`ဂဏန်း ${number} အတွက် သီးသန့်လစ်မစ် သတ်မှတ်ပါ:`, currentLimit.toString());
-    if (newLimit !== null && !isNaN(parseInt(newLimit))) {
+    this.limitManageNumber.set(number || '');
+    const currentLimit = number ? (this.individualLimits().get(number) || this.defaultLimit()) : this.defaultLimit();
+    this.limitManageAmount.set(currentLimit);
+    this.showLimitManagementModal.set(true);
+  }
+
+  saveIndividualLimit() {
+    const number = this.limitManageNumber().trim();
+    const limit = this.limitManageAmount();
+    
+    if (number && !isNaN(limit) && limit >= 0) {
       const type = this.lotteryType();
       this.appState.update(current => {
         const newLimits = new Map(current[type].individualLimits);
-        newLimits.set(number, parseInt(newLimit));
+        newLimits.set(number, limit);
         return {
           ...current,
           [type]: {
@@ -718,7 +747,44 @@ export class CodeAnalyzerComponent implements OnInit {
           }
         };
       });
+      if (!this.limitManageNumber()) {
+          // If adding new from list view, keep modal open or clear input?
+          // Let's clear to allow adding another
+          this.limitManageNumber.set('');
+          this.limitManageAmount.set(this.defaultLimit());
+          this.statusMessage.set('လစ်မစ်သတ်မှတ်ပြီးပါပြီ။');
+          setTimeout(() => this.statusMessage.set(''), 2000);
+      } else {
+        // If editing specific, close modal
+        this.showLimitManagementModal.set(false);
+      }
+    } else {
+        this.statusMessage.set('ကျေးဇူးပြု၍ ဂဏန်းနှင့် ပမာဏကို မှန်ကန်စွာထည့်ပါ။');
+        setTimeout(() => this.statusMessage.set(''), 3000);
     }
+  }
+
+  removeIndividualLimit(number: string) {
+      const type = this.lotteryType();
+      this.appState.update(current => {
+        const newLimits = new Map(current[type].individualLimits);
+        newLimits.delete(number);
+        return {
+          ...current,
+          [type]: {
+            ...current[type],
+            individualLimits: newLimits
+          }
+        };
+      });
+      if (this.limitManageNumber() === number) {
+          this.showLimitManagementModal.set(false);
+      }
+  }
+
+  closeLimitModal() {
+    this.showLimitManagementModal.set(false);
+    this.limitManageNumber.set('');
   }
 
   addBetsFromInbox(): void {
@@ -728,16 +794,39 @@ export class CodeAnalyzerComponent implements OnInit {
     let agentName: string | null = this.selectedAgentForInbox();
     let betContent = input;
 
-    // Auto-detect agent from input text
-    if (!agentName) {
-      const agentLineMatch = input.match(/^(?:Agent\s*:\s*)?([^:\n]+)/i);
-      if (agentLineMatch) {
-        const parsedName = agentLineMatch[1].trim();
-        // Check if the parsed name is a valid, existing agent
-        if (this.agents().some(a => a.name === parsedName)) {
-            agentName = parsedName;
-            betContent = input.substring(agentLineMatch[0].length).trim();
+    // --- 1. DETECT AGENT NAME FROM CONTENT ---
+    // Try to auto-detect if the user pasted a full message like "pp \n 13 = 200"
+    const lines = input.split(/\r?\n/);
+    const firstLine = lines[0].trim();
+    
+    // Check various formats: "--- Name ---", "Agent: Name", or just "Name"
+    const dashMatch = firstLine.match(/^---\s*(.+?)\s*---$/);
+    const colonMatch = firstLine.match(/^(?:Agent\s*:\s*)?([^:]+)$/i);
+    
+    let potentialName = '';
+    if (dashMatch) {
+      potentialName = dashMatch[1].trim();
+    } else if (colonMatch) {
+        // Heuristic: If the line doesn't have '=', and doesn't look like a standard bet (12 200)
+        // we treat it as a name.
+        if (!firstLine.includes('=') && !/^\d+\s+\d+/.test(firstLine)) {
+            potentialName = firstLine.replace(/^Agent\s*:\s*/i, '').trim();
         }
+    }
+
+    if (potentialName) {
+      // Logic: If we detected a potential name, we prefer it over "nothing selected".
+      // We also update the UI to show this selection.
+      
+      // Check if it matches an existing agent
+      if (this.agents().some(a => a.name === potentialName)) {
+          agentName = potentialName;
+          this.selectedAgentForInbox.set(potentialName); // Update UI dropdown
+      } 
+      // If it looks like a name (short enough) and we haven't selected one, assume it's a new agent
+      else if (!agentName && potentialName.length < 20) {
+          agentName = potentialName;
+          this.selectedAgentForInbox.set(potentialName); // Update UI dropdown (will likely show as empty/custom until created)
       }
     }
     
@@ -748,11 +837,32 @@ export class CodeAnalyzerComponent implements OnInit {
     }
     
     const finalAgentName = agentName as string;
+
+    // --- 2. STRIP AGENT NAME FROM CONTENT ---
+    // If the content starts with the agent name, remove it to avoid parsing issues
+    if (finalAgentName) {
+        const escapedName = finalAgentName.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const headerRegex = new RegExp(`^\\s*(?:---|Agent\\s*:)?\\s*${escapedName}\\s*(?:---)?\\s*(?:\\r?\\n|$)`, 'i');
+        
+        if (headerRegex.test(betContent)) {
+            betContent = betContent.replace(headerRegex, '').trim();
+        }
+    }
+
+    // Auto-create agent if they don't exist
+    if (!this.agents().some(a => a.name === finalAgentName)) {
+      this.agents.update(a => [...a, { name: finalAgentName, commission: 5 }]); // Default 5% commission
+      this.statusMessage.set(`အေးဂျင့် '${finalAgentName}' ကို အလိုအလျောက် စာရင်းသွင်းလိုက်သည်။`);
+    }
     
     const parsedBets = this.betParsingService.parse(betContent, this.lotteryType());
     if (parsedBets.size === 0) {
-        this.statusMessage.set('ထည့်သွင်းရန် မှန်ကန်သောစာရင်းများ မတွေ့ရှိပါ။');
-        setTimeout(() => this.statusMessage.set(''), 3000);
+        if (betContent.length > 20) {
+            this.statusMessage.set('Format တွေ့သော်လည်း စာရင်းများမတွေ့ပါ။ 2D/3D Mode မှန်ကန်ကြောင်း စစ်ဆေးပါ။');
+        } else {
+            this.statusMessage.set('ထည့်သွင်းရန် မှန်ကန်သောစာရင်းများ မတွေ့ရှိပါ။');
+        }
+        setTimeout(() => this.statusMessage.set(''), 4000);
         return;
     }
     
@@ -788,8 +898,8 @@ export class CodeAnalyzerComponent implements OnInit {
         });
     } else {
         if (this.addBetsToHistory(betContent, finalAgentName)) {
-            this.acceptedSubmissions.update(s => [...s, { agent: finalAgentName, content: betContent, timestamp: new Date(), total: Array.from(parsedBets.values()).reduce((a, b) => a + b, 0) }]);
-            this.inboxInput.set('');
+            this.acceptedSubmissions.update(s => [...s, { agent: finalAgentName, content: betContent, timestamp: new Date(), total: Array.from(parsedBets.values()).reduce((a: number, b: number) => a + b, 0) }]);
+            this.inboxInput.set(''); // Explicitly clear input on success
             this.statusMessage.set(`'${finalAgentName}' ၏ စာရင်းကို အောင်မြင်စွာ လက်ခံပြီးပါပြီ။`);
             setTimeout(() => this.statusMessage.set(''), 3000);
         }
@@ -801,7 +911,7 @@ export class CodeAnalyzerComponent implements OnInit {
     if (!confirmation) return;
 
     if (this.addBetsToHistory(confirmation.originalInput, confirmation.agent)) {
-      this.acceptedSubmissions.update(s => [...s, { agent: confirmation.agent, content: confirmation.originalInput, timestamp: new Date(), total: [...confirmation.safeBets, ...confirmation.overLimitBets].reduce((sum, b) => sum + b.amount, 0) }]);
+      this.acceptedSubmissions.update(s => [...s, { agent: confirmation.agent, content: confirmation.originalInput, timestamp: new Date(), total: [...confirmation.safeBets, ...confirmation.overLimitBets].reduce((sum: number, b: Bet) => sum + b.amount, 0) }]);
       this.inboxInput.set('');
       this.statusMessage.set(`'${confirmation.agent}' ၏ စာရင်းအားလုံးကို အောင်မြင်စွာ လက်ခံပြီးပါပြီ။`);
       setTimeout(() => this.statusMessage.set(''), 3000);
@@ -816,7 +926,7 @@ export class CodeAnalyzerComponent implements OnInit {
     const safeBetsString = confirmation.safeBets.map(b => `${b.number} ${b.amount}`).join(' ');
 
     if (safeBetsString && this.addBetsToHistory(safeBetsString, confirmation.agent)) {
-        this.acceptedSubmissions.update(s => [...s, { agent: confirmation.agent, content: safeBetsString, timestamp: new Date(), total: confirmation.safeBets.reduce((sum, b) => sum + b.amount, 0) }]);
+        this.acceptedSubmissions.update(s => [...s, { agent: confirmation.agent, content: safeBetsString, timestamp: new Date(), total: confirmation.safeBets.reduce((sum: number, b: Bet) => sum + b.amount, 0) }]);
         const overLimitText = confirmation.overLimitBets.map(b => `${b.number}=${b.amount}`).join(', ');
         this.confirmationMessage.set(`'${confirmation.agent}' အတွက် လစ်မစ်အတွင်း စာရင်းများကို လက်ခံပြီးပါပြီ။\n\nငြင်းပယ်လိုက်သော လစ်မစ်ကျော်စာရင်းများ: ${overLimitText}`);
         this.statusMessage.set('လစ်မစ်အတွင်း စာရင်းများကိုသာ လက်ခံပြီးပါပြီ။');
@@ -837,20 +947,55 @@ export class CodeAnalyzerComponent implements OnInit {
   openSubmissionModal() {
     if (this.pendingSubmissions().length === 0) return;
     
-    const header = `${this.bookieName()} (${this.lotteryType()}${this.lotteryType() === '2D' ? ' ' + this.session() : ''}) - ${new Date().toLocaleString()}\n--------------------`;
-    const body = this.pendingSubmissions().join('\n');
-    const total = this.pendingSubmissions()
-        .map(input => this.betParsingService.parse(input, this.lotteryType()))
-        .reduce((sum, currentMap) => {
-            let mapTotal = 0;
-            currentMap.forEach(amount => mapTotal += amount);
-            return sum + mapTotal;
-        }, 0);
+    // 1. Consolidate bets from all pending strings
+    const consolidatedMap = new Map<string, number>();
+    const pending = this.pendingSubmissions();
+    
+    for (const input of pending) {
+        const parsed = this.betParsingService.parse(input, this.lotteryType());
+        parsed.forEach((amount, number) => {
+            consolidatedMap.set(number, (consolidatedMap.get(number) || 0) + amount);
+        });
+    }
 
-    const footer = `--------------------\nစုစုပေါင်း: ${total.toLocaleString()}`;
+    // 2. Sort the bets
+    const sortedEntries = Array.from(consolidatedMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    
+    // 3. Construct the formatted string
+    const today = new Date().toLocaleDateString('en-CA');
+    let dateLine = `နေ့စွဲ: ${this.lotteryType() === '3D' ? this.formatDate(this.drawDate()) : today}`;
+    if (this.lotteryType() === '2D') {
+        const sessionText = this.session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း';
+        dateLine += ` (${sessionText})`;
+    }
 
-    this.submissionText.set(`${header}\n${body}\n${footer}`);
+    const header = `--- ${this.bookieName()} ---`;
+    const separator = '--------------------';
+    
+    const body = sortedEntries.map(([number, amount]) => `${number} = ${amount}`).join('\n');
+    const totalAmount = sortedEntries.reduce((sum: number, [, amount]: [string, number]) => sum + amount, 0);
+    const count = sortedEntries.length;
+
+    const footer = `စုစုပေါင်း (${count}) ကွက်: ${totalAmount.toLocaleString()} ${this.currencySymbol()}`;
+
+    const formattedText = `${header}\n${dateLine}\n${separator}\n${body}\n${separator}\n${footer}`;
+
+    this.submissionText.set(formattedText);
     this.showSubmissionModal.set(true);
+  }
+
+  copySubmissionText() {
+    this.copyToClipboard(this.submissionText());
+    this.statusMessage.set('စာရင်းကို Copy ကူးပြီးပါပြီ။');
+    setTimeout(() => this.statusMessage.set(''), 3000);
+  }
+
+  finishBatch() {
+    this.copyToClipboard(this.submissionText());
+    this.pendingSubmissions.set([]); // Clear the pending list
+    this.showSubmissionModal.set(false); // Close the modal
+    this.statusMessage.set('စာရင်းပို့ပြီးပါပြီ။ နောက်တစ်သုတ် စတင်နိုင်ပါပြီ။ (ပင်မဇယားတွင် စုစုပေါင်း ကျန်ရှိနေမည်)');
+    setTimeout(() => this.statusMessage.set(''), 4000);
   }
   
   clearSubmissions() {
@@ -873,8 +1018,8 @@ export class CodeAnalyzerComponent implements OnInit {
     const totalPayout = totalHeldBet * this.payoutRate();
     
     const agentPayouts = this.agents().map(agent => {
-      // FIX: Using a type assertion on `b.amount` to prevent type inference issues where it might be considered 'unknown'.
-      const agentBetAmount = cell.breakdown.filter(b => b.source === agent.name).reduce((sum: number, b: BetDetail) => sum + (b.amount as number), 0);
+      // FIX: Using Number() for explicit type conversion to prevent type inference issues where `b.amount` might be considered 'unknown'.
+      const agentBetAmount = cell.breakdown.filter(b => b.source === agent.name).reduce((sum: number, b: BetDetail) => sum + Number(b.amount), 0);
       return { name: agent.name, betAmount: agentBetAmount, payout: agentBetAmount * this.payoutRate() };
     }).filter(p => p.payout > 0);
     
@@ -1193,7 +1338,8 @@ export class CodeAnalyzerComponent implements OnInit {
         this.acknowledgedOverLimits.update(currentMap => {
             const newMap = new Map(currentMap);
             assignedNumbers.forEach(number => {
-                const totalOverLimit = fullOverLimitMap.get(number) || 0;
+                // FIX: Explicitly convert to number to resolve potential type inference issue.
+                const totalOverLimit = Number(fullOverLimitMap.get(number) || 0);
                 if (totalOverLimit > 0) {
                     newMap.set(number, totalOverLimit);
                 }

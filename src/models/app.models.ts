@@ -19,6 +19,7 @@ export interface GridCell {
   number: string; 
   amount: number; 
   isOverLimit: boolean; 
+  hasCustomLimit: boolean; // New property
   breakdown: BetDetail[]; 
   betsString: string;
   betsTooltip: string;
