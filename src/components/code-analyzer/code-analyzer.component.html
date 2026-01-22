@@ -742,17 +742,26 @@
                                         
                                         <!-- Total Win (Potential) -->
                                         <td class="py-2 text-right align-top text-yellow-500 print:text-yellow-700">
-                                            {{ agent.totalWinAmount > 0 ? agent.totalWinAmount.toLocaleString() : '-' }}
+                                            <div class="flex flex-col">
+                                                <span class="text-xs text-slate-400">{{ agent.totalWinBetAmount.toLocaleString() }}</span>
+                                                <span class="font-bold">{{ agent.totalWinAmount.toLocaleString() }}</span>
+                                            </div>
                                         </td>
                                         
                                         <!-- Cut/Over Win -->
-                                        <td class="py-2 text-right align-top text-red-300 print:text-gray-500 text-[10px] font-mono pt-2.5">
-                                            {{ agent.overLimitWinAmount > 0 ? '(' + agent.overLimitWinAmount.toLocaleString() + ')' : '-' }}
+                                        <td class="py-2 text-right align-top text-red-300 print:text-gray-500">
+                                            <div class="flex flex-col">
+                                                <span class="text-xs text-slate-500">{{ agent.overLimitWinBetAmount.toLocaleString() }}</span>
+                                                <span>{{ agent.overLimitWinAmount > 0 ? '(' + agent.overLimitWinAmount.toLocaleString() + ')' : '-' }}</span>
+                                            </div>
                                         </td>
 
                                         <!-- Actual Held Payout -->
                                         <td class="py-2 text-right align-top font-bold text-red-500 print:text-red-600 text-sm">
-                                            {{ agent.payout > 0 ? agent.payout.toLocaleString() : '-' }}
+                                            <div class="flex flex-col">
+                                                <span class="text-xs text-slate-400 font-normal">{{ agent.heldWinBetAmount.toLocaleString() }}</span>
+                                                <span>{{ agent.payout > 0 ? agent.payout.toLocaleString() : '-' }}</span>
+                                            </div>
                                         </td>
 
                                         <td class="py-2 text-right align-top font-bold text-base" [class]="agent.finalBalance >= 0 ? 'text-green-400 print:text-green-600' : 'text-red-400 print:text-red-600'">
@@ -766,8 +775,21 @@
 
                     <!-- Other Payouts -->
                     @if (details.otherPayouts.length > 0) {
-                         <h4 class="font-bold text-sm mb-2 border-b border-slate-700 mt-4 pb-2 text-slate-400 print:text-black print:border-gray-300">အခြား ပေါက်သူများ</h4>
+                         <h4 class="font-bold text-sm mb-3 border-b border-slate-700 mt-4 pb-2 text-slate-400 print:text-black print:border-gray-300">အခြား ပေါက်သူများ (Direct Input)</h4>
                          <table class="w-full text-xs text-left">
+                             <thead>
+                                <tr class="border-b border-slate-700 text-slate-400 print:border-gray-300 print:text-gray-600">
+                                    <th class="py-2 font-bold w-40">အမည်</th>
+                                    <th class="py-2 text-right font-bold">ရောင်းရငွေ</th>
+                                    <th class="py-2 text-right font-bold text-gray-500">ကော်မရှင်</th>
+                                    <th class="py-2 text-right font-bold">သွင်းငွေ</th>
+                                    <!-- Detailed Win Columns -->
+                                    <th class="py-2 text-right font-bold text-yellow-500">ပေါက်ငွေ (Total)</th>
+                                    <th class="py-2 text-right font-bold text-red-300">ကာသီး (Cut)</th>
+                                    <th class="py-2 text-right font-bold text-red-500 print:text-red-600">လျော်ကြေး (Payout)</th>
+                                    <th class="py-2 text-right font-bold">ရှင်းရန်</th>
+                                </tr>
+                            </thead>
                              <tbody>
                                  @for (p of details.otherPayouts; track p.name) {
                                      <tr class="border-b border-slate-800 print:border-gray-100 hover:bg-slate-800/50">
@@ -777,9 +799,38 @@
                                                 <div class="text-[10px] text-gray-500 font-mono">({{ p.individualBets.join(', ') }})</div>
                                              }
                                          </td>
-                                         <td class="py-2 text-right align-top">
-                                             <span class="text-yellow-500 mr-2" title="Total Win">{{ p.totalWinAmount.toLocaleString() }}</span>
-                                             <span class="text-red-400 font-bold text-sm">{{ p.payout.toLocaleString() }}</span>
+                                         <!-- Sales Columns (Same Structure as Agent) -->
+                                         <td class="py-2 text-right align-top text-slate-400 print:text-black">{{ p.totalSales.toLocaleString() }}</td>
+                                         <td class="py-2 text-right align-top text-slate-500">-</td> <!-- Usually 0 commission -->
+                                         <td class="py-2 text-right align-top text-slate-400 print:text-black font-semibold">{{ p.netSales.toLocaleString() }}</td>
+
+                                         <!-- Total Win (Potential) -->
+                                         <td class="py-2 text-right align-top text-yellow-500 print:text-yellow-700">
+                                            <div class="flex flex-col">
+                                                <span class="text-xs text-slate-400">{{ p.totalWinBetAmount.toLocaleString() }}</span>
+                                                <span class="font-bold">{{ p.totalWinAmount.toLocaleString() }}</span>
+                                            </div>
+                                         </td>
+
+                                         <!-- Cut/Over Win -->
+                                         <td class="py-2 text-right align-top text-red-300 print:text-gray-500">
+                                            <div class="flex flex-col">
+                                                <span class="text-xs text-slate-500">{{ p.overLimitWinBetAmount.toLocaleString() }}</span>
+                                                <span>{{ p.overLimitWinAmount > 0 ? '(' + p.overLimitWinAmount.toLocaleString() + ')' : '-' }}</span>
+                                            </div>
+                                         </td>
+
+                                         <!-- Actual Held Payout -->
+                                         <td class="py-2 text-right align-top font-bold text-red-500 print:text-red-600 text-sm">
+                                            <div class="flex flex-col">
+                                                <span class="text-xs text-slate-400 font-normal">{{ p.heldWinBetAmount.toLocaleString() }}</span>
+                                                <span>{{ p.payout > 0 ? p.payout.toLocaleString() : '-' }}</span>
+                                            </div>
+                                         </td>
+
+                                         <!-- Balance -->
+                                         <td class="py-2 text-right align-top font-bold text-base" [class]="p.finalBalance >= 0 ? 'text-green-400 print:text-green-600' : 'text-red-400 print:text-red-600'">
+                                            {{ p.finalBalance.toLocaleString() }}
                                          </td>
                                      </tr>
                                  }
