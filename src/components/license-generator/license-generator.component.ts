@@ -137,6 +137,27 @@ export class LicenseGeneratorComponent implements OnInit {
       await this.persistenceService.set(this.USERS_KEY, this.managedUsers());
     }
   }
+  
+  async factoryReset(): Promise<void> {
+      if (!confirm('သတိပေးချက်: ဤလုပ်ဆောင်ချက်သည် ဒေတာအားလုံးကို အပြီးတိုင်ဖျက်ပစ်ပါမည်။\n\n- အက်ဒမင်စကားဝှက်သည် "MasterSaiYan" သို့ပြန်ပြောင်းသွားမည်။\n- မှတ်တမ်းများ၊ အသုံးပြုသူစာရင်းများအားလုံး ပျက်သွားမည်။\n\nဆက်လုပ်ရန် သေချာပါသလား?')) {
+          return;
+      }
+      
+      if (!confirm('နောက်ဆုံးအကြိမ် အတည်ပြုပါသည်: အမှန်တကယ် ဖျက်လိုပါသလား?')) {
+          return;
+      }
+      
+      try {
+          await this.persistenceService.factoryReset();
+          localStorage.clear();
+          sessionStorage.clear();
+          alert('စက်ရုံထုတ် အတိုင်းပြန်လည်သတ်မှတ်ပြီးပါပြီ။ Application ကို ပြန်လည်စတင်ပါမည်။');
+          window.location.reload();
+      } catch (e) {
+          alert('Reset ပြုလုပ်ရာတွင် အမှားအယွင်းရှိပါသည်။ Browser Cache ကိုရှင်းကြည့်ပါ။');
+          console.error(e);
+      }
+  }
 
   copyGeneratedLicense(): void {
       this.copyForUser(this.generatedLicense());

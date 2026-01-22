@@ -196,4 +196,17 @@ export class PersistenceService {
       await this.set(migrationFlag, true);
       console.log("Migration to IndexedDB complete.");
   }
+
+  async factoryReset(): Promise<void> {
+    if (this.db) {
+        this.db.close();
+        this.db = null;
+    }
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.deleteDatabase(this.DB_NAME);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject('Could not delete database');
+        request.onblocked = () => console.warn('Database delete blocked');
+    });
+  }
 }

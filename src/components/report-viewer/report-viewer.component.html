@@ -116,8 +116,47 @@
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <!-- Financial Details -->
-              <div class="bg-slate-800/50 p-4 rounded-lg">
-                 <!-- ... Financial details remain the same -->
+              <div class="bg-slate-800/50 p-4 rounded-lg space-y-3 text-sm">
+                  <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+                      <span class="text-slate-400">စုစုပေါင်း ရောင်းရငွေ</span>
+                      <span class="font-mono font-bold text-white">{{ report.totalBetAmount.toLocaleString() }} {{ report.currencySymbol || 'K' }}</span>
+                  </div>
+
+                  @if(report.mode !== 'အေးဂျင့်') {
+                      <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+                          <span class="text-slate-400">လစ်မစ်ကျော် (ကာသီး)</span>
+                          <span class="font-mono text-red-400">{{ report.totalOverLimitAmount.toLocaleString() }} {{ report.currencySymbol || 'K' }}</span>
+                      </div>
+                      <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+                          <span class="text-slate-400">ကိုင်ငွေ (Held)</span>
+                          <span class="font-mono text-blue-300">{{ report.totalHeldAmount.toLocaleString() }} {{ report.currencySymbol || 'K' }}</span>
+                      </div>
+                       <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+                          <span class="text-slate-400">ပေးရမည့် ကော်မရှင် ({{ report.commissionToPay }}%)</span>
+                          <span class="font-mono text-orange-400">{{ report.payableCommissionAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) }} {{ report.currencySymbol || 'K' }}</span>
+                      </div>
+                  }
+
+                  @if(report.mode === 'အလယ်ဒိုင်') {
+                      <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+                          <span class="text-slate-400">ရမည့် ကော်မရှင် ({{ report.commissionFromUpperBookie }}%)</span>
+                          <span class="font-mono text-green-400">{{ report.receivableCommissionAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) }} {{ report.currencySymbol || 'K' }}</span>
+                      </div>
+                  }
+
+                  @if(report.mode === 'အေးဂျင့်') {
+                      <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+                          <span class="text-slate-400">ရမည့် ကော်မရှင် ({{ report.agentCommissionFromBookie }}%)</span>
+                          <span class="font-mono text-green-400">{{ report.agentCommissionEarned.toLocaleString('en-US', {minimumFractionDigits: 2}) }} {{ report.currencySymbol || 'K' }}</span>
+                      </div>
+                  }
+
+                  <div class="flex justify-between items-center pt-2">
+                      <span class="text-slate-300 font-bold">အသားတင် (Net)</span>
+                      <span class="font-mono font-bold text-lg" [class]="report.netAmount >= 0 ? 'text-green-400' : 'text-red-400'">
+                          {{ report.netAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) }} {{ report.currencySymbol || 'K' }}
+                      </span>
+                  </div>
               </div>
 
               <!-- Bet Data Display -->

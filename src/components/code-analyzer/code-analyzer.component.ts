@@ -12,14 +12,21 @@ import { SummaryCardComponent } from '../summary-card/summary-card.component';
 // --- Interfaces ---
 type LotteryType = '2D' | '3D';
 interface Bet { number: string; amount: number; }
-interface HistoryEntry { id: string; input: string; source: string; }
+interface HistoryEntry { id: string; input: string; source: string; mode?: string; rawBets?: Bet[]; } // Added rawBets to store structured data if needed, though we re-parse for now
 interface AcceptedSubmission { agent: string; content: string; timestamp: Date; total: number; }
+
 interface PayoutDetails {
   winningNumber: string;
-  totalHeldBet: number;
-  totalPayout: number;
-  agentPayouts: { name: string; payout: number; betAmount: number }[];
+  totalBet: number;          // Total amount received on this number
+  totalHeldBet: number;      // Amount kept (Within Limit)
+  totalHeldPayout: number;   // Payout for kept amount
+  totalOverLimitBet: number; // Amount over limit (Kathi)
+  totalOverLimitPayout: number; // Payout for over limit amount
+  // Updated: Now includes individualBets array for breakdown display
+  agentPayouts: { name: string; payout: number; betAmount: number; individualBets: number[] }[];
+  otherPayouts: { name: string; payout: number; betAmount: number; individualBets: number[] }[]; 
 }
+
 interface AgentWithPerformance extends Agent {
   totalSales: number;
 }
@@ -36,6 +43,16 @@ interface InboxResult {
   isAllAccepted: boolean;
 }
 
+// Interface for Voucher Data
+interface VoucherData {
+  items: { number: string; amount: number }[];
+  totalAmount: number;
+  totalCount: number;
+  date: string;
+  time: string;
+  currency: string;
+}
+
 interface AppState {
     betHistory: HistoryEntry[];
     defaultLimit: number;
@@ -44,7 +61,11 @@ interface AppState {
     commissionFromUpperBookie: number;
     agentCommissionFromBookie: number;
     individualLimits: Map<string, number>;
-    bookieName: string;
+    // bookieName removed, replaced with specific names per mode
+    myAgentName: string;
+    agentProfiles: string[]; // List of agent names for the Agent Mode
+    myMiddleBookieName: string;
+    myMainBookieName: string;
     session?: 'morning' | 'evening';
     drawDate?: string;
     userInput: string;
@@ -95,7 +116,17 @@ export class CodeAnalyzerComponent implements OnInit {
   agentUpperBookies = signal<{name: string}[]>([]);
   newAgentUpperBookieName = signal('');
   
-  agents = signal<Agent[]>([]);
+  // -- Agent State (Separated by Mode) --
+  middleBookieAgents = signal<Agent[]>([]);
+  mainBookieAgents = signal<Agent[]>([]);
+  
+  // Computed 'agents' signal to return the correct list based on activeMode
+  agents = computed(() => {
+      if (this.activeMode() === 'အလယ်ဒိုင်') return this.middleBookieAgents();
+      if (this.activeMode() === 'ဒိုင်ကြီး') return this.mainBookieAgents();
+      return []; // Agents don't manage sub-agents usually
+  });
+
   newAgentName = signal('');
   newAgentCommission = signal(5);
   agentSortBy = signal<'name' | 'sales'>('sales');
@@ -120,6 +151,10 @@ export class CodeAnalyzerComponent implements OnInit {
   showSubmissionModal = signal(false);
   submissionText = signal('');
   
+  // --- Voucher Modal State ---
+  showVoucherModal = signal(false);
+  voucherData = signal<VoucherData | null>(null);
+
   acknowledgedOverLimits = signal<Map<string, number>>(new Map());
   
   // --- State for Middle Bookie Over-Limit Management ---
@@ -155,7 +190,20 @@ export class CodeAnalyzerComponent implements OnInit {
   commissionFromUpperBookie = computed(() => this.appState()[this.lotteryType()].commissionFromUpperBookie);
   agentCommissionFromBookie = computed(() => this.appState()[this.lotteryType()].agentCommissionFromBookie);
   individualLimits = computed(() => this.appState()[this.lotteryType()].individualLimits);
-  bookieName = computed(() => this.appState()[this.lotteryType()].bookieName);
+  
+  // Dynamic name based on active mode
+  bookieName = computed(() => {
+      const state = this.appState()[this.lotteryType()];
+      switch (this.activeMode()) {
+          case 'အေးဂျင့်': return state.myAgentName;
+          case 'အလယ်ဒိုင်': return state.myMiddleBookieName;
+          case 'ဒိုင်ကြီး': return state.myMainBookieName;
+          default: return state.myMainBookieName;
+      }
+  });
+
+  agentProfiles = computed(() => this.appState()[this.lotteryType()].agentProfiles || []);
+
   session = computed(() => this.appState()['2D'].session!);
   drawDate = computed(() => this.appState()['3D'].drawDate!);
   userInput = computed(() => this.appState()[this.lotteryType()].userInput);
@@ -163,20 +211,40 @@ export class CodeAnalyzerComponent implements OnInit {
   // --- Computed Signals (Logic) ---
   lotteryData = computed<Map<string, BetDetail[]>>(() => {
     const data = new Map<string, BetDetail[]>();
-    const history = this.betHistory();
+    // Filter history based strictly on active Mode
+    const currentMode = this.activeMode();
+    
+    const history = this.betHistory().filter(h => {
+        // Legacy data (undefined mode) is treated as 'ဒိုင်ကြီး'
+        const entryMode = h.mode || 'ဒိုင်ကြီး';
+        // Strict equality: 'အေးဂျင့်' sees only 'အေးဂျင့်', 'အလယ်ဒိုင်' sees only 'အလယ်ဒိုင်', etc.
+        return entryMode === currentMode;
+    });
+
     for (const entry of history) {
-      const parsedAmounts = this.betParsingService.parse(entry.input, this.lotteryType());
-      parsedAmounts.forEach((amount, number) => {
-        const existingBets = data.get(number) || [];
-        const newBet: BetDetail = { id: crypto.randomUUID(), amount, source: entry.source, historyEntryId: entry.id };
-        data.set(number, [...existingBets, newBet]);
+      // Changed to parseRaw to preserve individual bet entries
+      const parsedBets = this.betParsingService.parseRaw(entry.input, this.lotteryType());
+      parsedBets.forEach(bet => {
+        const existingBets = data.get(bet.number) || [];
+        const newBet: BetDetail = { id: crypto.randomUUID(), amount: bet.amount, source: entry.source, historyEntryId: entry.id };
+        data.set(bet.number, [...existingBets, newBet]);
       });
     }
     return data;
   });
 
   // --- Computed Signals (UI) ---
-  recentHistory = computed(() => this.betHistory().slice(-20).reverse());
+  // Filter recent history strictly by mode for display as well
+  recentHistory = computed(() => {
+      const currentMode = this.activeMode();
+      return this.betHistory()
+        .filter(h => {
+             const entryMode = h.mode || 'ဒိုင်ကြီး';
+             return entryMode === currentMode;
+        })
+        .slice(-20)
+        .reverse();
+  });
 
   // 2D Grid
   gridCells = computed<GridCell[]>(() => {
@@ -358,7 +426,9 @@ export class CodeAnalyzerComponent implements OnInit {
         salesMap.set(bet.source, (salesMap.get(bet.source) || 0) + bet.amount);
       });
     });
-    const agents = this.agents().map(agent => ({ ...agent, totalSales: salesMap.get(agent.name) || 0 }));
+    // This relies on the computed 'agents' signal which is already filtered by mode
+    const currentAgents = this.agents();
+    const agents = currentAgents.map(agent => ({ ...agent, totalSales: salesMap.get(agent.name) || 0 }));
     agents.sort((a, b) => this.agentSortBy() === 'sales' ? b.totalSales - a.totalSales : a.name.localeCompare(b.name));
     return agents;
   });
@@ -439,7 +509,10 @@ export class CodeAnalyzerComponent implements OnInit {
     window.addEventListener('offline', () => this.isOnline.set(false));
       
     // --- Persistence Effects for Shared State ---
-    effect(() => this.persistenceService.set('lottery_agents', this.agents()));
+    // Update: Persist separate agent lists
+    effect(() => this.persistenceService.set('lottery_agents_middle', this.middleBookieAgents()));
+    effect(() => this.persistenceService.set('lottery_agents_main', this.mainBookieAgents()));
+    
     effect(() => this.persistenceService.set('lottery_upper_bookies', this.upperBookies()));
     effect(() => this.persistenceService.set('lottery_agent_upper_bookies', this.agentUpperBookies()));
     effect(() => this.persistenceService.set('lottery_currency', this.currencySymbol()));
@@ -448,10 +521,12 @@ export class CodeAnalyzerComponent implements OnInit {
     effect(() => this.persistenceService.set('lottery_app_state_2d', this.appState()['2D']));
     effect(() => this.persistenceService.set('lottery_app_state_3d', this.appState()['3D']));
     
+    // Auto-select agent logic updated to react to current 'agents' list
     effect(() => {
-      if (this.agents().length > 0 && !this.agents().some(a => a.name === this.selectedAgentForInbox())) {
-        this.selectedAgentForInbox.set(this.agents()[0].name);
-      } else if (this.agents().length === 0) {
+      const currentAgents = this.agents();
+      if (currentAgents.length > 0 && !currentAgents.some(a => a.name === this.selectedAgentForInbox())) {
+        this.selectedAgentForInbox.set(currentAgents[0].name);
+      } else if (currentAgents.length === 0) {
         this.selectedAgentForInbox.set(null);
       }
     });
@@ -499,13 +574,24 @@ export class CodeAnalyzerComponent implements OnInit {
 
   async ngOnInit(): Promise<void> {
     // Load Shared State
-    const [agents, upperBookies, agentUpperBookies, currency] = await Promise.all([
-      this.persistenceService.get<Agent[]>('lottery_agents'),
+    const [legacyAgents, midAgents, mainAgents, upperBookies, agentUpperBookies, currency] = await Promise.all([
+      this.persistenceService.get<Agent[]>('lottery_agents'), // Legacy key for fallback
+      this.persistenceService.get<Agent[]>('lottery_agents_middle'),
+      this.persistenceService.get<Agent[]>('lottery_agents_main'),
       this.persistenceService.get<UpperBookie[]>('lottery_upper_bookies'),
       this.persistenceService.get<{name: string}[]>('lottery_agent_upper_bookies'),
       this.persistenceService.get<'K' | '฿' | '¥'>('lottery_currency'),
     ]);
-    if (agents) this.agents.set(agents);
+
+    if (midAgents) this.middleBookieAgents.set(midAgents);
+    
+    // Logic: Use mainAgents if exists, otherwise fallback to legacy agents to keep data for existing users
+    if (mainAgents) {
+        this.mainBookieAgents.set(mainAgents);
+    } else if (legacyAgents) {
+        this.mainBookieAgents.set(legacyAgents);
+    }
+
     if (upperBookies) this.upperBookies.set(upperBookies);
     if (agentUpperBookies) this.agentUpperBookies.set(agentUpperBookies);
     if (currency) this.currencySymbol.set(currency);
@@ -522,6 +608,7 @@ export class CodeAnalyzerComponent implements OnInit {
 
   private createInitialState(type: LotteryType): AppState {
     const today = new Date().toISOString().split('T')[0];
+    const defaultName = type === '2D' ? 'My 2D' : 'My 3D';
     return {
       betHistory: [],
       defaultLimit: type === '2D' ? 50000 : 500000,
@@ -530,7 +617,10 @@ export class CodeAnalyzerComponent implements OnInit {
       commissionFromUpperBookie: 10,
       agentCommissionFromBookie: 10,
       individualLimits: new Map<string, number>(),
-      bookieName: type === '2D' ? 'My 2D' : 'My 3D',
+      myAgentName: defaultName + ' Agent',
+      agentProfiles: [defaultName + ' Agent'],
+      myMiddleBookieName: defaultName + ' Middle',
+      myMainBookieName: defaultName + ' Main',
       session: 'morning',
       drawDate: today,
       userInput: '',
@@ -539,10 +629,29 @@ export class CodeAnalyzerComponent implements OnInit {
 
   private mergeState(initial: AppState, stored?: AppState | null): AppState {
     if (!stored) return initial;
+    // Handle migration: If stored state has legacy 'bookieName', we might want to preserve it
+    // by assigning it to the relevant fields if they are empty or default.
+    // For now, we prefer the structure of the new state but keep stored values.
+    const legacyName = (stored as any).bookieName;
+    const currentName = (stored as any).myAgentName || legacyName || initial.myAgentName;
+    
+    // Ensure agentProfiles is initialized correctly and includes the current name
+    let profiles = (stored as any).agentProfiles;
+    if (!profiles || !Array.isArray(profiles) || profiles.length === 0) {
+        profiles = [currentName];
+    } else if (!profiles.includes(currentName)) {
+        profiles = [...profiles, currentName];
+    }
+    
     return {
       ...initial,
       ...stored,
       individualLimits: new Map(stored.individualLimits),
+      // Ensure new name fields are populated if coming from old version
+      myAgentName: currentName,
+      agentProfiles: profiles,
+      myMiddleBookieName: (stored as any).myMiddleBookieName || legacyName || initial.myMiddleBookieName,
+      myMainBookieName: (stored as any).myMainBookieName || legacyName || initial.myMainBookieName,
     };
   }
   
@@ -555,6 +664,88 @@ export class CodeAnalyzerComponent implements OnInit {
           [key]: value
         }
       }));
+  }
+
+  updateBookieName(name: string) {
+      const mode = this.activeMode();
+      let key: keyof AppState;
+      if (mode === 'အေးဂျင့်') key = 'myAgentName';
+      else if (mode === 'အလယ်ဒိုင်') key = 'myMiddleBookieName';
+      else key = 'myMainBookieName';
+      
+      this.updateCurrentState(key, name);
+  }
+
+  onProfileSelect(event: Event) {
+      const select = event.target as HTMLSelectElement;
+      const name = select.value;
+      if (name) {
+          this.updateBookieName(name);
+          // Reset select to default so the same profile can be re-selected if needed (visual reset)
+          select.value = '';
+      }
+  }
+
+  addAgentProfile() {
+      const currentName = this.bookieName().trim();
+      
+      if (currentName) {
+          const type = this.lotteryType();
+          this.appState.update(current => {
+              const profiles = current[type].agentProfiles || [];
+              if (profiles.includes(currentName)) {
+                  this.statusMessage.set("ဤအမည်ရှိပြီးသားဖြစ်ပါသည်။");
+                  setTimeout(() => this.statusMessage.set(""), 2000);
+                  return current;
+              }
+              this.statusMessage.set(`'${currentName}' ကို Profile စာရင်းတွင် သိမ်းဆည်းလိုက်ပါသည်။`);
+              setTimeout(() => this.statusMessage.set(""), 2000);
+              return {
+                  ...current,
+                  [type]: {
+                      ...current[type],
+                      agentProfiles: [...profiles, currentName]
+                  }
+              };
+          });
+      } else {
+          this.statusMessage.set("အမည်ရိုက်ထည့်ပါ");
+          setTimeout(() => this.statusMessage.set(""), 2000);
+      }
+  }
+
+  removeAgentProfile() {
+      const currentName = this.bookieName();
+      const profiles = this.agentProfiles();
+      
+      if (profiles.length <= 1) {
+          alert("အနည်းဆုံး အမည်တစ်ခု ကျန်ရှိနေရပါမည်။");
+          return;
+      }
+      
+      if (confirm(`'${currentName}' ကို Profile စာရင်းမှ ဖျက်ရန် သေချာပါသလား?`)) {
+           const type = this.lotteryType();
+           this.appState.update(current => {
+              const newProfiles = profiles.filter(p => p !== currentName);
+              
+              // If the current name was removed, switch to the first available one to avoid phantom state
+              let nextName = current[type].myAgentName;
+              if (nextName === currentName) {
+                  nextName = newProfiles[0];
+              }
+
+              return {
+                  ...current,
+                  [type]: {
+                      ...current[type],
+                      agentProfiles: newProfiles,
+                      myAgentName: nextName
+                  }
+              };
+           });
+           this.statusMessage.set("ဖျက်ပြီးပါပြီ။");
+           setTimeout(() => this.statusMessage.set(""), 2000);
+      }
   }
 
   handleKeyboardEvents(event: KeyboardEvent) {
@@ -621,10 +812,18 @@ export class CodeAnalyzerComponent implements OnInit {
   }
 
   private addBetsToHistory(input: string, source: string): boolean {
-    const parsedAmounts = this.betParsingService.parse(input, this.lotteryType());
-    if (parsedAmounts.size === 0) return false;
+    // UPDATED: Use parseRaw to ensure individual bets are preserved
+    const parsedBets = this.betParsingService.parseRaw(input, this.lotteryType());
+    if (parsedBets.length === 0) return false;
 
-    const newEntry: HistoryEntry = { id: crypto.randomUUID(), input, source };
+    // IMPORTANT: Tag the history entry with the active mode so we can filter it later
+    const newEntry: HistoryEntry = { 
+        id: crypto.randomUUID(), 
+        input, 
+        source,
+        mode: this.activeMode() 
+    };
+    
     const type = this.lotteryType();
     this.appState.update(current => ({
       ...current,
@@ -637,7 +836,7 @@ export class CodeAnalyzerComponent implements OnInit {
   }
   
   clearAllBets(): void {
-    if (this.betHistory().length === 0) {
+    if (this.recentHistory().length === 0) {
       this.statusMessage.set('ဖျက်ရန် စာရင်းများမရှိသေးပါ။');
       setTimeout(() => this.statusMessage.set(''), 3000);
       return;
@@ -647,24 +846,49 @@ export class CodeAnalyzerComponent implements OnInit {
 
   confirmClearAll(): void {
     const type = this.lotteryType();
-    this.appState.update(current => ({
-      ...current,
-      [type]: {
-        ...current[type],
-        betHistory: [],
-        userInput: '',
-        individualLimits: new Map()
-      }
-    }));
+    const currentMode = this.activeMode();
 
+    this.appState.update(current => {
+      // Filter out history that belongs to the current mode view
+      // Keep history that belongs to other modes
+      const currentHistory = current[type].betHistory;
+      const retainedHistory = currentHistory.filter(h => {
+          const entryMode = h.mode || 'ဒိုင်ကြီး'; // default legacy to Bookie
+          // Strict segregation: Only remove items belonging to current mode
+          return entryMode !== currentMode;
+      });
+
+      return {
+        ...current,
+        [type]: {
+          ...current[type],
+          betHistory: retainedHistory,
+          userInput: '',
+          // Only clear limits if we are in a Bookie mode (optional, but requested to keep shared structure for now)
+          // For now, we don't clear individual limits when clearing bets, as limits are settings.
+          // individualLimits: current[type].individualLimits
+        }
+      };
+    });
+
+    // Clear auxiliary state
     this.inboxInput.set('');
     this.confirmationMessage.set('');
     this.submissionText.set('');
-    this.pendingSubmissions.set([]);
-    this.acceptedSubmissions.set([]);
-    this.acknowledgedOverLimits.set(new Map());
-    this.rejectedOverLimits.set(new Set());
-    this.acknowledgedHeldOverLimits.set(new Map());
+    
+    // Clear pending submissions only if we are in agent mode
+    if (currentMode === 'အေးဂျင့်') {
+        this.pendingSubmissions.set([]);
+    }
+    
+    // Clear Bookie specific transient state depending on mode
+    if (currentMode === 'အလယ်ဒိုင်' || currentMode === 'ဒိုင်ကြီး') {
+        this.acceptedSubmissions.set([]);
+        this.acknowledgedOverLimits.set(new Map());
+        this.rejectedOverLimits.set(new Set());
+        this.acknowledgedHeldOverLimits.set(new Map());
+    }
+
     this.showClearAllConfirmation.set(false);
     this.profitOptimizerSuggestion.set(null);
     this.lastInboxResult.set(null);
@@ -674,21 +898,39 @@ export class CodeAnalyzerComponent implements OnInit {
 
   undoLastBet(): void {
     const type = this.lotteryType();
-    const history = this.betHistory();
-    const lastEntry = history[history.length - 1];
-    if (!lastEntry) return;
+    const currentMode = this.activeMode();
+    const history = this.appState()[type].betHistory;
+    
+    // Find the last entry index that matches the current mode strictly
+    let indexToRemove = -1;
+    for (let i = history.length - 1; i >= 0; i--) {
+        const h = history[i];
+        const entryMode = h.mode || 'ဒိုင်ကြီး';
+        if (entryMode === currentMode) {
+            indexToRemove = i;
+            break;
+        }
+    }
+
+    if (indexToRemove === -1) return;
+    
+    const entryToDelete = history[indexToRemove];
+
+    // Create new history array without that element
+    const newHistory = [...history];
+    newHistory.splice(indexToRemove, 1);
 
     this.appState.update(current => ({
       ...current,
       [type]: {
         ...current[type],
-        betHistory: current[type].betHistory.slice(0, -1)
+        betHistory: newHistory
       }
     }));
     
-    if (this.activeMode() === 'အေးဂျင့်' && lastEntry.source === this.bookieName()) {
+    if (this.activeMode() === 'အေးဂျင့်' && entryToDelete.source === this.bookieName()) {
       this.pendingSubmissions.update(submissions => {
-        const index = submissions.lastIndexOf(lastEntry.input);
+        const index = submissions.lastIndexOf(entryToDelete.input);
         if (index > -1) {
           const newSubmissions = [...submissions];
           newSubmissions.splice(index, 1);
@@ -734,12 +976,31 @@ export class CodeAnalyzerComponent implements OnInit {
   addAgent() {
     const name = this.newAgentName().trim();
     const commission = this.newAgentCommission();
-    if (name && commission >= 0 && !this.agents().some(a => a.name === name)) {
-      this.agents.update(a => [...a, { name, commission }]);
-      this.newAgentName.set('');
+    const mode = this.activeMode();
+
+    if (name && commission >= 0) {
+        if (mode === 'အလယ်ဒိုင်') {
+            if (!this.middleBookieAgents().some(a => a.name === name)) {
+                this.middleBookieAgents.update(a => [...a, { name, commission }]);
+                this.newAgentName.set('');
+            }
+        } else if (mode === 'ဒိုင်ကြီး') {
+            if (!this.mainBookieAgents().some(a => a.name === name)) {
+                this.mainBookieAgents.update(a => [...a, { name, commission }]);
+                this.newAgentName.set('');
+            }
+        }
     }
   }
-  removeAgent(agentNameToRemove: string) { this.agents.update(a => a.filter(agent => agent.name !== agentNameToRemove)); }
+
+  removeAgent(agentNameToRemove: string) { 
+      const mode = this.activeMode();
+      if (mode === 'အလယ်ဒိုင်') {
+          this.middleBookieAgents.update(a => a.filter(agent => agent.name !== agentNameToRemove));
+      } else if (mode === 'ဒိုင်ကြီး') {
+          this.mainBookieAgents.update(a => a.filter(agent => agent.name !== agentNameToRemove));
+      }
+  }
   
   addUpperBookie() {
     const name = this.newUpperBookieName().trim();
@@ -889,13 +1150,23 @@ export class CodeAnalyzerComponent implements OnInit {
     }
 
     // Auto-create agent if they don't exist
-    if (!this.agents().some(a => a.name === finalAgentName)) {
-      this.agents.update(a => [...a, { name: finalAgentName, commission: 5 }]); // Default 5% commission
+    // Update logic: Check strictly against CURRENT mode's agent list
+    const currentMode = this.activeMode();
+    const currentAgentList = this.agents();
+    
+    if (!currentAgentList.some(a => a.name === finalAgentName)) {
+      if (currentMode === 'အလယ်ဒိုင်') {
+          this.middleBookieAgents.update(a => [...a, { name: finalAgentName, commission: 5 }]);
+      } else if (currentMode === 'ဒိုင်ကြီး') {
+          this.mainBookieAgents.update(a => [...a, { name: finalAgentName, commission: 5 }]);
+      }
       this.statusMessage.set(`အေးဂျင့် '${finalAgentName}' ကို အလိုအလျောက် စာရင်းသွင်းလိုက်သည်။`);
     }
     
-    const parsedBets = this.betParsingService.parse(betContent, this.lotteryType());
-    if (parsedBets.size === 0) {
+    // Use parseRaw to get array of bets sequentially
+    const rawBets = this.betParsingService.parseRaw(betContent, this.lotteryType());
+    
+    if (rawBets.length === 0) {
         if (betContent.length > 20) {
             this.statusMessage.set('Format တွေ့သော်လည်း စာရင်းများမတွေ့ပါ။ 2D/3D Mode မှန်ကန်ကြောင်း စစ်ဆေးပါ။');
         } else {
@@ -911,20 +1182,41 @@ export class CodeAnalyzerComponent implements OnInit {
     const currentIndLimits = this.individualLimits();
     const currentDefLimit = this.defaultLimit();
 
-    parsedBets.forEach((amount, number) => {
-        const existingAmount = (currentData.get(number) || []).reduce((sum, bet) => sum + bet.amount, 0);
+    // Create a temporary map to track cumulative totals as we iterate through this batch
+    // We start with the existing totals from the database
+    const tempCurrentDataMap = new Map<string, number>();
+    currentData.forEach((bets, number) => {
+        const total = bets.reduce((sum, b) => sum + b.amount, 0);
+        tempCurrentDataMap.set(number, total);
+    });
+
+    rawBets.forEach(bet => {
+        const number = bet.number;
+        const amount = bet.amount;
+        
+        const existingAmount = tempCurrentDataMap.get(number) || 0;
         const limit = currentIndLimits.get(number) ?? currentDefLimit;
         
-        if (existingAmount + amount > limit) {
+        if (existingAmount >= limit) {
+            // Already over limit, reject the full amount
+            overLimitBets.push({ number, amount });
+        } else if (existingAmount + amount > limit) {
+            // Partially over limit
             const safeAmount = limit - existingAmount;
+            const rejectedAmount = amount - safeAmount;
+            
             if (safeAmount > 0) {
                 safeBets.push({ number, amount: safeAmount });
             }
-            if (amount - safeAmount > 0) {
-                 overLimitBets.push({ number, amount: amount - safeAmount });
+            if (rejectedAmount > 0) {
+                overLimitBets.push({ number, amount: rejectedAmount });
             }
+            // Update tracking map to the limit (since we filled it)
+            tempCurrentDataMap.set(number, limit);
         } else {
+            // Fully safe
             safeBets.push({ number, amount });
+            tempCurrentDataMap.set(number, existingAmount + amount);
         }
     });
 
@@ -937,7 +1229,8 @@ export class CodeAnalyzerComponent implements OnInit {
         });
     } else {
         if (this.addBetsToHistory(betContent, finalAgentName)) {
-            const totalAmount = Array.from(parsedBets.values()).reduce((a: number, b: number) => a + b, 0);
+            // For total amount, sum up raw bets
+            const totalAmount = rawBets.reduce((sum, b) => sum + b.amount, 0);
             this.acceptedSubmissions.update(s => [...s, { agent: finalAgentName, content: betContent, timestamp: new Date(), total: totalAmount }]);
             this.inboxInput.set(''); // Explicitly clear input on success
             
@@ -979,27 +1272,36 @@ export class CodeAnalyzerComponent implements OnInit {
     const confirmation = this.pendingInboxConfirmation();
     if (!confirmation) return;
 
-    const safeBetsString = confirmation.safeBets.map(b => `${b.number} ${b.amount}`).join(' ');
+    // Use newline separator for cleaner history
+    const safeBetsString = confirmation.safeBets.map(b => `${b.number} ${b.amount}`).join('\n');
+    let safeTotal = 0;
 
-    if (safeBetsString && this.addBetsToHistory(safeBetsString, confirmation.agent)) {
-        const safeTotal = confirmation.safeBets.reduce((sum: number, b: Bet) => sum + b.amount, 0);
-        this.acceptedSubmissions.update(s => [...s, { agent: confirmation.agent, content: safeBetsString, timestamp: new Date(), total: safeTotal }]);
-        
-        const overLimitText = confirmation.overLimitBets.map(b => `${b.number}=${b.amount}`).join(', ');
-        
-        this.lastInboxResult.set({
-            agent: confirmation.agent,
-            totalAccepted: safeTotal,
-            rejectedText: overLimitText,
-            isAllAccepted: false
-        });
-
-        this.statusMessage.set('လစ်မစ်အတွင်း စာရင်းများကိုသာ လက်ခံပြီးပါပြီ။');
-        setTimeout(() => this.statusMessage.set(''), 4000);
-    } else {
-        this.statusMessage.set('လက်ခံရန် လစ်မစ်အတွင်း စာရင်းများမရှိပါ။');
-        setTimeout(() => this.statusMessage.set(''), 3000);
+    // Add safe bets to history if any exist
+    if (safeBetsString) {
+        if (this.addBetsToHistory(safeBetsString, confirmation.agent)) {
+            safeTotal = confirmation.safeBets.reduce((sum: number, b: Bet) => sum + b.amount, 0);
+            this.acceptedSubmissions.update(s => [...s, { agent: confirmation.agent, content: safeBetsString, timestamp: new Date(), total: safeTotal }]);
+        }
     }
+
+    // Always generate a result voucher, even if totalAccepted is 0 (all rejected)
+    const overLimitText = confirmation.overLimitBets.map(b => `${b.number}=${b.amount}`).join(', ');
+    
+    this.lastInboxResult.set({
+        agent: confirmation.agent,
+        totalAccepted: safeTotal,
+        rejectedText: overLimitText,
+        isAllAccepted: false
+    });
+
+    if (safeTotal > 0) {
+        this.statusMessage.set('လစ်မစ်အတွင်း စာရင်းများကိုသာ လက်ခံပြီးပါပြီ။');
+    } else {
+        this.statusMessage.set('စာရင်းအားလုံး လစ်မစ်ကျော်နေသဖြင့် ပယ်ဖျက်လိုက်ပါသည်။ (Reply Voucher တွင် ကြည့်ပါ)');
+    }
+    
+    setTimeout(() => this.statusMessage.set(''), 4000);
+
     this.inboxInput.set('');
     this.cancelInboxConfirmation();
   }
@@ -1022,21 +1324,16 @@ export class CodeAnalyzerComponent implements OnInit {
   openSubmissionModal() {
     if (this.pendingSubmissions().length === 0) return;
     
-    // 1. Consolidate bets from all pending strings
-    const consolidatedMap = new Map<string, number>();
+    // CHANGED: Use parseRaw and array to avoid aggregation
+    const allBets: { number: string; amount: number }[] = [];
     const pending = this.pendingSubmissions();
     
     for (const input of pending) {
-        const parsed = this.betParsingService.parse(input, this.lotteryType());
-        parsed.forEach((amount, number) => {
-            consolidatedMap.set(number, (consolidatedMap.get(number) || 0) + amount);
-        });
+        const bets = this.betParsingService.parseRaw(input, this.lotteryType());
+        allBets.push(...bets);
     }
 
-    // 2. Sort the bets
-    const sortedEntries = Array.from(consolidatedMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-    
-    // 3. Construct the formatted string
+    // Construct the formatted string
     const today = new Date().toLocaleDateString('en-CA');
     let dateLine = `နေ့စွဲ: ${this.lotteryType() === '3D' ? this.formatDate(this.drawDate()) : today}`;
     if (this.lotteryType() === '2D') {
@@ -1047,9 +1344,10 @@ export class CodeAnalyzerComponent implements OnInit {
     const header = `--- ${this.bookieName()} ---`;
     const separator = '--------------------';
     
-    const body = sortedEntries.map(([number, amount]) => `${number} = ${amount}`).join('\n');
-    const totalAmount = sortedEntries.reduce((sum: number, [, amount]: [string, number]) => sum + amount, 0);
-    const count = sortedEntries.length;
+    // Map directly without sorting to preserve input order
+    const body = allBets.map(b => `${b.number} = ${b.amount}`).join('\n');
+    const totalAmount = allBets.reduce((sum, b) => sum + b.amount, 0);
+    const count = allBets.length;
 
     const footer = `စုစုပေါင်း (${count}) ကွက်: ${totalAmount.toLocaleString()} ${this.currencySymbol()}`;
 
@@ -1087,18 +1385,71 @@ export class CodeAnalyzerComponent implements OnInit {
     if (num.length !== requiredLength || isNaN(parseInt(num))) { alert(`ကျေးဇူးပြု၍ ဂဏန်း ${requiredLength} လုံးကို မှန်ကန်စွာထည့်ပါ။`); return; }
     
     const cell = (type === '2D' ? this.gridCells() : this.listItems()).find(c => c.number === num);
-    if (!cell) { this.payoutDetails.set({ winningNumber: num, totalHeldBet: 0, totalPayout: 0, agentPayouts: [] }); return; }
+    
+    if (!cell) { 
+        this.payoutDetails.set({ 
+            winningNumber: num, 
+            totalBet: 0,
+            totalHeldBet: 0, 
+            totalHeldPayout: 0, 
+            totalOverLimitBet: 0, 
+            totalOverLimitPayout: 0, 
+            agentPayouts: [],
+            otherPayouts: []
+        }); 
+        return; 
+    }
 
-    const totalHeldBet = cell.amount - cell.overLimitAmount;
-    const totalPayout = totalHeldBet * this.payoutRate();
+    const totalBet = cell.amount;
+    const totalOverLimitBet = cell.overLimitAmount;
+    const totalHeldBet = totalBet - totalOverLimitBet;
     
-    const agentPayouts = this.agents().map(agent => {
-      // FIX: Using Number() for explicit type conversion to prevent type inference issues where `b.amount` might be considered 'unknown'.
-      const agentBetAmount = cell.breakdown.filter(b => b.source === agent.name).reduce((sum: number, b: BetDetail) => sum + Number(b.amount), 0);
-      return { name: agent.name, betAmount: agentBetAmount, payout: agentBetAmount * this.payoutRate() };
-    }).filter(p => p.payout > 0);
+    const totalHeldPayout = totalHeldBet * this.payoutRate();
+    const totalOverLimitPayout = totalOverLimitBet * this.payoutRate();
     
-    this.payoutDetails.set({ winningNumber: num, totalHeldBet, totalPayout, agentPayouts });
+    // Group bets by source first
+    const sourceMap = new Map<string, number[]>(); // Map source to list of amounts
+    cell.breakdown.forEach(b => {
+        const amount = Number(b.amount);
+        const list = sourceMap.get(b.source) || [];
+        list.push(amount);
+        sourceMap.set(b.source, list);
+    });
+
+    const knownAgentNames = new Set(this.agents().map(a => a.name));
+    const agentPayouts: { name: string; payout: number; betAmount: number; individualBets: number[] }[] = [];
+    const otherPayouts: { name: string; payout: number; betAmount: number; individualBets: number[] }[] = [];
+
+    sourceMap.forEach((amounts, source) => {
+        const totalAmount = amounts.reduce((a, b) => a + b, 0);
+        const entry = { 
+            name: source, 
+            betAmount: totalAmount, 
+            payout: totalAmount * this.payoutRate(),
+            individualBets: amounts 
+        };
+        
+        if (knownAgentNames.has(source)) {
+            agentPayouts.push(entry);
+        } else {
+            otherPayouts.push(entry);
+        }
+    });
+
+    // Sort by amount desc
+    agentPayouts.sort((a, b) => b.betAmount - a.betAmount);
+    otherPayouts.sort((a, b) => b.betAmount - a.betAmount);
+    
+    this.payoutDetails.set({ 
+        winningNumber: num, 
+        totalBet,
+        totalHeldBet, 
+        totalHeldPayout, 
+        totalOverLimitBet,
+        totalOverLimitPayout,
+        agentPayouts,
+        otherPayouts
+    });
   }
 
   printPayout() { window.print(); }
@@ -1110,7 +1461,15 @@ export class CodeAnalyzerComponent implements OnInit {
       return;
     }
     const type = this.lotteryType();
+    const currentMode = this.activeMode();
+    
     try {
+        // Filter bets for the report based on strict active view mode
+        const filteredHistory = this.betHistory().filter(h => {
+             const entryMode = h.mode || 'ဒိုင်ကြီး';
+             return entryMode === currentMode;
+        });
+
         const report: Report = {
             id: `report_${new Date().toISOString()}_${this.activeMode()}_${type === '2D' ? this.session() : this.drawDate()}_${type}`,
             lotteryType: type,
@@ -1129,7 +1488,7 @@ export class CodeAnalyzerComponent implements OnInit {
                 const totalAmount = value.reduce((sum, bet) => sum + bet.amount, 0);
                 return [key, totalAmount];
             }),
-            betHistory: this.betHistory().map(h => h.input),
+            betHistory: filteredHistory.map(h => h.input),
             bookieName: this.bookieName(),
             defaultLimit: this.defaultLimit(),
             payoutRate: this.payoutRate(),
@@ -1138,7 +1497,7 @@ export class CodeAnalyzerComponent implements OnInit {
             commissionFromUpperBookie: this.commissionFromUpperBookie(),
             individualLimits: Array.from(this.individualLimits().entries()),
             upperBookies: this.upperBookies(),
-            agents: this.agents(),
+            agents: this.agents(), // This will save the mode-specific agent list
             currencySymbol: this.currencySymbol(),
         };
         await this.persistenceService.saveReport(report);
@@ -1425,5 +1784,47 @@ export class CodeAnalyzerComponent implements OnInit {
         this.statusMessage.set('ကာသီးစာရင်းများကို အောင်မြင်စွာ ခွဲဝေပြီးပါပြီ။');
         setTimeout(() => this.statusMessage.set(''), 3000);
     }
+  }
+
+  // --- Voucher Functions ---
+  openVoucherModal(): void {
+    if (this.pendingSubmissions().length === 0) return;
+
+    // Use parseRaw to get all bets from pending strings
+    const allBets: { number: string; amount: number }[] = [];
+    const pending = this.pendingSubmissions();
+    for (const input of pending) {
+        const bets = this.betParsingService.parseRaw(input, this.lotteryType());
+        allBets.push(...bets);
+    }
+
+    if (allBets.length === 0) {
+        this.statusMessage.set('ဘောင်ချာထုတ်ရန် စာရင်းမရှိပါ။');
+        setTimeout(() => this.statusMessage.set(''), 2000);
+        return;
+    }
+
+    const totalAmount = allBets.reduce((sum, b) => sum + b.amount, 0);
+    const date = new Date().toLocaleDateString('en-CA');
+    const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+    this.voucherData.set({
+        items: allBets,
+        totalAmount,
+        totalCount: allBets.length,
+        date,
+        time,
+        currency: this.currencySymbol() // Added currency symbol
+    });
+    this.showVoucherModal.set(true);
+  }
+
+  printVoucher(): void {
+    window.print();
+  }
+
+  closeVoucherModal(): void {
+    this.showVoucherModal.set(false);
+    this.voucherData.set(null);
   }
 }

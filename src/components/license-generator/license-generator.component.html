@@ -95,6 +95,17 @@
               </div>
             }
         </div>
+        
+        <hr class="border-slate-600">
+
+        <!-- Danger Zone -->
+        <div class="p-4 border border-red-800 bg-red-900/10 rounded-lg">
+             <h3 class="text-lg font-bold text-red-500 mb-2">Danger Zone</h3>
+             <p class="text-xs text-red-300 mb-4">ဤလုပ်ဆောင်ချက်သည် ဒေတာအားလုံး (မှတ်တမ်းများ၊ အသုံးပြုသူစာရင်းများ၊ အက်ဒမင်စကားဝှက်) ကို ဖျက်ပြီး App ကို အသစ်စက်စက် အခြေအနေသို့ ပြန်လည်ရောက်ရှိစေမည်ဖြစ်သည်။</p>
+             <button (click)="factoryReset()" class="w-full bg-red-700 hover:bg-red-800 text-white text-sm font-bold py-2 px-4 rounded transition border border-red-500">
+                Factory Reset (စက်ရုံထုတ် အတိုင်းပြန်ထားမည်)
+             </button>
+        </div>
 
       </div>
 

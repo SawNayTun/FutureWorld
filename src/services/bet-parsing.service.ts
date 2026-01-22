@@ -7,10 +7,35 @@ const NYI_KO_NUMBERS = ['01', '12', '23', '34', '45', '56', '67', '78', '89', '9
 const EVEN_DIGITS = ['0', '2', '4', '6', '8'];
 const ODD_DIGITS = ['1', '3', '5', '7', '9'];
 
+export interface RawBet {
+    number: string;
+    amount: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class BetParsingService {
 
+  // Original method: Returns aggregated totals (Map)
   parse(input: string, lotteryType: '2D' | '3D'): Map<string, number> {
+    const newAmounts = new Map<string, number>();
+    // Callback sums up amounts for the same number
+    this.coreParse(input, lotteryType, (number, amount) => {
+        newAmounts.set(number, (newAmounts.get(number) || 0) + amount);
+    });
+    return newAmounts;
+  }
+
+  // New method: Returns list of individual bets (Array) preserving sequence
+  parseRaw(input: string, lotteryType: '2D' | '3D'): RawBet[] {
+      const bets: RawBet[] = [];
+      // Callback pushes each bet to array
+      this.coreParse(input, lotteryType, (number, amount) => {
+          bets.push({ number, amount });
+      });
+      return bets;
+  }
+
+  private coreParse(input: string, lotteryType: '2D' | '3D', addBetCallback: (n: string, a: number) => void): void {
     const rawLines = input.split(/\r?\n/);
     const cleanedLines = rawLines.filter(line => {
       const trimmed = line.trim();
@@ -25,6 +50,7 @@ export class BetParsingService {
     let processedInput = cleanedLines.join('\n');
 
     // --- Burmese replacements ---
+    // Added 'ssp' and 'mmp' logic triggers will be handled in code, users can type english directly or we can map if needed
     const burmeseToEnglishMap: { [key: string]: string } = { 'အပူး': 'apu', 'ညီကို': 'nk', 'ပါဝါ': 'pao', 'နက်ခတ်': 'nat', 'စုံစုံ': 'ss', 'မမ': 'mm', 'စုံမ': 'sm', 'မစုံ': 'ms', 'ဆယ်ပြည့်': 'sp', 'အကုန်': 'all', 'ဘူဘဒိတ်': 'bb', 'ထိပ်': 't', 'ပိတ်': 'p', 'အပါ': 'a', 'ခွေ': 'k', 'ဗြိတ်': 'v', 'ဘဒိတ်': 'b', 'အကပ်': 'ak', 'ပတ်လည်': 'palei' };
     for (const burmese of Object.keys(burmeseToEnglishMap)) {
         processedInput = processedInput.replace(new RegExp(burmese, 'g'), burmeseToEnglishMap[burmese]);
@@ -40,8 +66,20 @@ export class BetParsingService {
 
     // 2. Normalize separators: Add dash, asterisk, underscore, colon to the list
     // Replaces =, /, ၊, ,, -, *, _, : with space
-    const entries = processedInput.replace(/[=/၊,*\-_:]/g, ' ').split(/\s+/).map(s => s.trim()).filter(Boolean);
-    const newAmounts = new Map<string, number>();
+    processedInput = processedInput.replace(/[=/၊,*\-_:]/g, ' ');
+
+    // --- FEATURE 1: Bulk R Logic ---
+    // Detect pattern: "08 07 30 ... r 10"
+    // Regex looks for: Sequence of 2-digit numbers (space separated), followed by 'r', followed by amount
+    // We expand this to "08r 10 07r 10 30r 10" so the existing logic can handle it.
+    if (lotteryType === '2D') {
+        processedInput = processedInput.replace(/((?:\b\d{2}\s+)+)r\s+(\d+(?:k)?)\b/gi, (match, numbersPart, amountPart) => {
+            const numbers = numbersPart.trim().split(/\s+/);
+            return numbers.map((n: string) => `${n}r ${amountPart}`).join(' ');
+        });
+    }
+
+    const entries = processedInput.split(/\s+/).map(s => s.trim()).filter(Boolean);
 
     let i = 0;
     while (i < entries.length) {
@@ -50,12 +88,35 @@ export class BetParsingService {
             const potentialKey = entries[i].toLowerCase();
             const amountStr = entries[i+1];
             
+            // --- FEATURE 2: Inline Mixed Amounts (e.g., 3r2) ---
+            // Check if amount is in format XrY
+            if (lotteryType === '2D' && /^\d+(?:k)?r\d+(?:k)?$/i.test(amountStr)) {
+                // It's a split amount logic (Direct vs Reverse)
+                const [directAmtStr, reverseAmtStr] = amountStr.toLowerCase().split('r');
+                const directAmount = this.parseAmount(directAmtStr);
+                const reverseAmount = this.parseAmount(reverseAmtStr);
+
+                if (!isNaN(directAmount) && !isNaN(reverseAmount)) {
+                    // Check if key is a valid single number
+                    if (/^\d{2}$/.test(potentialKey)) {
+                        // Add Direct
+                        addBetCallback(potentialKey, directAmount);
+                        // Add Reverse
+                        const reversedKey = potentialKey.split('').reverse().join('');
+                        addBetCallback(reversedKey, reverseAmount);
+                        
+                        i += 2;
+                        continue;
+                    }
+                }
+            }
+
             const amount = this.parseAmount(amountStr);
             
             // Critical Check: 
             // 1. Amount must be a valid number.
             if (!isNaN(amount)) {
-                const handled = this.processKey(potentialKey, amount, lotteryType, newAmounts);
+                const handled = this.processKey(potentialKey, amount, lotteryType, addBetCallback);
                 if (handled) {
                     // Successfully parsed [Key, Value] pair
                     i += 2;
@@ -68,8 +129,6 @@ export class BetParsingService {
         // It might be a header string like "pp", or junk. Skip it.
         i++;
     }
-
-    return newAmounts;
   }
 
   private parseAmount(amountStr: string): number {
@@ -86,10 +145,10 @@ export class BetParsingService {
   }
 
   // Returns true if the key was valid and bets were generated/added
-  private processKey(numPart: string, amount: number, lotteryType: '2D' | '3D', newAmounts: Map<string, number>): boolean {
-    const add2D = (n: string, a: number) => { if (n && n.length === 2 && !isNaN(parseInt(n))) { newAmounts.set(n, (newAmounts.get(n) || 0) + a); } };
+  private processKey(numPart: string, amount: number, lotteryType: '2D' | '3D', addBet: (n: string, a: number) => void): boolean {
+    const add2D = (n: string, a: number) => { if (n && n.length === 2 && !isNaN(parseInt(n))) { addBet(n, a); } };
     const addPair2D = (n: string, a: number) => { add2D(n, a); if (n[0] !== n[1]) { add2D(n.split('').reverse().join(''), a); } };
-    const add3D = (n: string, a: number) => { if (n && n.length === 3 && !isNaN(parseInt(n))) { newAmounts.set(n, (newAmounts.get(n) || 0) + a); } };
+    const add3D = (n: string, a: number) => { if (n && n.length === 3 && !isNaN(parseInt(n))) { addBet(n, a); } };
 
     let matched = false;
 
@@ -104,8 +163,36 @@ export class BetParsingService {
         else if (['nk'].includes(numPart)) { NYI_KO_NUMBERS.forEach(n => addPair2D(n, amount)); matched = true; }
         else if (['pao'].includes(numPart)) { POWER_NUMBERS.forEach(n => addPair2D(n, amount)); matched = true; }
         else if (['nat'].includes(numPart)) { NAKHAT_NUMBERS.forEach(n => addPair2D(n, amount)); matched = true; }
-        else if (['ss'].includes(numPart)) { EVEN_DIGITS.forEach(d1 => EVEN_DIGITS.forEach(d2 => add2D(`${d1}${d2}`, amount))); matched = true; }
-        else if (['mm'].includes(numPart)) { ODD_DIGITS.forEach(d1 => ODD_DIGITS.forEach(d2 => add2D(`${d1}${d2}`, amount))); matched = true; }
+        // --- FEATURE 3: SS/MM Pairs Separation ---
+        // 'ss': Even-Even but NOT Pair (d1 != d2)
+        else if (['ss'].includes(numPart)) { 
+            EVEN_DIGITS.forEach(d1 => EVEN_DIGITS.forEach(d2 => {
+                if (d1 !== d2) add2D(`${d1}${d2}`, amount);
+            })); 
+            matched = true; 
+        }
+        // 'mm': Odd-Odd but NOT Pair (d1 != d2)
+        else if (['mm'].includes(numPart)) { 
+            ODD_DIGITS.forEach(d1 => ODD_DIGITS.forEach(d2 => {
+                if (d1 !== d2) add2D(`${d1}${d2}`, amount);
+            })); 
+            matched = true; 
+        }
+        // 'ssp' (New): Even Pairs only
+        else if (['ssp'].includes(numPart)) {
+            EVEN_DIGITS.forEach(d1 => EVEN_DIGITS.forEach(d2 => {
+                if (d1 === d2) add2D(`${d1}${d2}`, amount);
+            }));
+            matched = true;
+        }
+        // 'mmp' (New): Odd Pairs only
+        else if (['mmp'].includes(numPart)) {
+            ODD_DIGITS.forEach(d1 => ODD_DIGITS.forEach(d2 => {
+                if (d1 === d2) add2D(`${d1}${d2}`, amount);
+            }));
+            matched = true;
+        }
+        
         else if (['sm'].includes(numPart)) { EVEN_DIGITS.forEach(d1 => ODD_DIGITS.forEach(d2 => add2D(`${d1}${d2}`, amount))); matched = true; }
         else if (['ms'].includes(numPart)) { ODD_DIGITS.forEach(d1 => EVEN_DIGITS.forEach(d2 => add2D(`${d1}${d2}`, amount))); matched = true; }
         else if (['sp'].includes(numPart)) { ['19', '28', '37', '46', '55'].forEach(n => addPair2D(n, amount)); matched = true; }
