@@ -1,3 +1,4 @@
+
 <div class="p-4 font-sans text-gray-300 min-h-screen">
   <header class="mb-4 flex justify-between items-center no-print" [class.mt-12]="licenseService.isAdmin()">
       <div class="flex items-center gap-4">
@@ -79,7 +80,6 @@
                      <input type="text" 
                             [ngModel]="bookieName()" 
                             (ngModelChange)="updateBookieName($event)" 
-                            [ngModelOptions]="{updateOn: 'blur'}"
                             class="flex-grow bg-slate-900 border border-slate-600 rounded px-2 py-1.5 focus:ring-yellow-500 text-white min-w-0"
                             placeholder="အမည်ရိုက်ထည့်ပါ">
                      

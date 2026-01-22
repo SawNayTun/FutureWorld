@@ -538,6 +538,18 @@ export class CodeAnalyzerComponent implements OnInit {
       }
     });
 
+    // --- Persistence Effects for UI State (NEW) ---
+    effect(() => {
+      if(this.isDataLoaded()) {
+        this.persistenceService.set('lottery_active_mode', this.activeMode());
+      }
+    });
+    effect(() => {
+      if(this.isDataLoaded()) {
+        this.persistenceService.set('lottery_selected_type', this.lotteryType());
+      }
+    });
+
     // --- Persistence Effects for 2D/3D State ---
     effect(() => {
       const state = this.appState()['2D'];
@@ -627,6 +639,17 @@ export class CodeAnalyzerComponent implements OnInit {
     if (agentUpperBookies) this.agentUpperBookies.set(agentUpperBookies);
     if (currency) this.currencySymbol.set(currency);
 
+    // Load Last Active Mode and Type
+    const lastActiveMode = await this.persistenceService.get<string>('lottery_active_mode');
+    if (lastActiveMode && this.modes.includes(lastActiveMode)) {
+        this.activeMode.set(lastActiveMode);
+    }
+
+    const lastLotteryType = await this.persistenceService.get<LotteryType>('lottery_selected_type');
+    if (lastLotteryType && ['2D', '3D'].includes(lastLotteryType)) {
+        this.lotteryType.set(lastLotteryType);
+    }
+
     // Load 2D/3D State
     const storedState2D = await this.persistenceService.get<AppState>('lottery_app_state_2d');
     const storedState3D = await this.persistenceService.get<AppState>('lottery_app_state_3d');
@@ -663,29 +686,45 @@ export class CodeAnalyzerComponent implements OnInit {
 
   private mergeState(initial: AppState, stored?: AppState | null): AppState {
     if (!stored) return initial;
-    // Handle migration: If stored state has legacy 'bookieName', we might want to preserve it
-    // by assigning it to the relevant fields if they are empty or default.
-    // For now, we prefer the structure of the new state but keep stored values.
+    
+    // Legacy support: 'bookieName' was the old key for everyone
     const legacyName = (stored as any).bookieName;
-    const currentName = (stored as any).myAgentName || legacyName || initial.myAgentName;
+    
+    // For each role, check if a specific name exists in stored data.
+    // If undefined/null, fallback to legacyName, then initial default.
+    // We check !== undefined to allow empty strings if user cleared it intentionally.
+    
+    const storedAgentName = (stored as any).myAgentName;
+    const myAgentName = (storedAgentName !== undefined && storedAgentName !== null) 
+        ? storedAgentName 
+        : (legacyName || initial.myAgentName);
+
+    const storedMiddleName = (stored as any).myMiddleBookieName;
+    const myMiddleBookieName = (storedMiddleName !== undefined && storedMiddleName !== null)
+        ? storedMiddleName
+        : (legacyName || initial.myMiddleBookieName);
+
+    const storedMainName = (stored as any).myMainBookieName;
+    const myMainBookieName = (storedMainName !== undefined && storedMainName !== null)
+        ? storedMainName
+        : (legacyName || initial.myMainBookieName);
     
     // Ensure agentProfiles is initialized correctly and includes the current name
     let profiles = (stored as any).agentProfiles;
     if (!profiles || !Array.isArray(profiles) || profiles.length === 0) {
-        profiles = [currentName];
-    } else if (!profiles.includes(currentName)) {
-        profiles = [...profiles, currentName];
+        profiles = [myAgentName];
+    } else if (!profiles.includes(myAgentName)) {
+        profiles = [...profiles, myAgentName];
     }
     
     return {
       ...initial,
       ...stored,
       individualLimits: new Map(stored.individualLimits),
-      // Ensure new name fields are populated if coming from old version
-      myAgentName: currentName,
+      myAgentName,
+      myMiddleBookieName,
+      myMainBookieName,
       agentProfiles: profiles,
-      myMiddleBookieName: (stored as any).myMiddleBookieName || legacyName || initial.myMiddleBookieName,
-      myMainBookieName: (stored as any).myMainBookieName || legacyName || initial.myMainBookieName,
     };
   }
   
