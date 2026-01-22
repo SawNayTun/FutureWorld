@@ -101,6 +101,7 @@ export class CodeAnalyzerComponent implements OnInit {
     '3D': this.createInitialState('3D')
   });
 
+  isDataLoaded = signal(false); // Flag to prevent overwriting DB on init
   showReports = signal(false);
   showUserGuide = signal(false);
   showClearAllConfirmation = signal(false);
@@ -509,17 +510,47 @@ export class CodeAnalyzerComponent implements OnInit {
     window.addEventListener('offline', () => this.isOnline.set(false));
       
     // --- Persistence Effects for Shared State ---
-    // Update: Persist separate agent lists
-    effect(() => this.persistenceService.set('lottery_agents_middle', this.middleBookieAgents()));
-    effect(() => this.persistenceService.set('lottery_agents_main', this.mainBookieAgents()));
+    // Update: Persist separate agent lists only when data is loaded
+    effect(() => {
+      if(this.isDataLoaded()) {
+        this.persistenceService.set('lottery_agents_middle', this.middleBookieAgents());
+      }
+    });
+    effect(() => {
+      if(this.isDataLoaded()) {
+        this.persistenceService.set('lottery_agents_main', this.mainBookieAgents());
+      }
+    });
     
-    effect(() => this.persistenceService.set('lottery_upper_bookies', this.upperBookies()));
-    effect(() => this.persistenceService.set('lottery_agent_upper_bookies', this.agentUpperBookies()));
-    effect(() => this.persistenceService.set('lottery_currency', this.currencySymbol()));
+    effect(() => {
+      if(this.isDataLoaded()) {
+        this.persistenceService.set('lottery_upper_bookies', this.upperBookies());
+      }
+    });
+    effect(() => {
+      if(this.isDataLoaded()) {
+        this.persistenceService.set('lottery_agent_upper_bookies', this.agentUpperBookies());
+      }
+    });
+    effect(() => {
+      if(this.isDataLoaded()) {
+        this.persistenceService.set('lottery_currency', this.currencySymbol());
+      }
+    });
 
     // --- Persistence Effects for 2D/3D State ---
-    effect(() => this.persistenceService.set('lottery_app_state_2d', this.appState()['2D']));
-    effect(() => this.persistenceService.set('lottery_app_state_3d', this.appState()['3D']));
+    effect(() => {
+      const state = this.appState()['2D'];
+      if(this.isDataLoaded()) {
+        this.persistenceService.set('lottery_app_state_2d', state);
+      }
+    });
+    effect(() => {
+      const state = this.appState()['3D'];
+      if(this.isDataLoaded()) {
+        this.persistenceService.set('lottery_app_state_3d', state);
+      }
+    });
     
     // Auto-select agent logic updated to react to current 'agents' list
     effect(() => {
@@ -604,6 +635,9 @@ export class CodeAnalyzerComponent implements OnInit {
       '2D': this.mergeState(current['2D'], storedState2D),
       '3D': this.mergeState(current['3D'], storedState3D)
     }));
+    
+    // Mark data as loaded to enable persistence effects
+    this.isDataLoaded.set(true);
   }
 
   private createInitialState(type: LotteryType): AppState {
