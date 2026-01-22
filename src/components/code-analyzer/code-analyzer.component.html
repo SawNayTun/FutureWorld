@@ -623,8 +623,8 @@
 
 <!-- Voucher Print Modal -->
 @if (showVoucherModal() && voucherData(); as data) {
-  <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-    <div class="w-full max-w-sm bg-white text-black rounded-lg shadow-2xl p-6 relative flex flex-col">
+  <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 print:items-start print:justify-start print:p-0">
+    <div class="w-full max-w-sm bg-white text-black rounded-lg shadow-2xl p-6 relative flex flex-col print:w-full print:max-w-none print:shadow-none print:p-0">
        <button (click)="closeVoucherModal()" class="absolute top-2 right-2 text-gray-500 hover:text-black no-print">&times;</button>
        
        <!-- Printable Area: POS Style -->
@@ -635,7 +635,7 @@
              <p class="text-[10px] dashed-line">================================</p>
           </div>
           
-          <div class="max-h-[50vh] overflow-y-auto no-scrollbar">
+          <div class="max-h-[50vh] overflow-y-auto no-scrollbar print:max-h-none print:overflow-visible">
              @for(item of data.items; track $index) {
                 <div class="flex justify-between py-0.5 border-b border-gray-300 border-dashed">
                    <span class="font-bold text-base">{{ item.number }}</span>
@@ -676,8 +676,8 @@
 
 <!-- Payout Modal -->
 @if (showPayoutModal()) {
-  <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-    <div class="w-full max-w-3xl bg-slate-800 border border-green-700 rounded-lg shadow-2xl p-6 relative flex flex-col max-h-[90vh]">
+  <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 print:items-start print:justify-start print:p-0">
+    <div class="w-full max-w-3xl bg-slate-800 border border-green-700 rounded-lg shadow-2xl p-6 relative flex flex-col max-h-[90vh] print:w-full print:max-w-none print:shadow-none print:p-0 print:border-none">
        <button (click)="showPayoutModal.set(false)" class="absolute top-4 right-4 text-slate-400 hover:text-white no-print">&times;</button>
        <h3 class="text-lg font-bold text-green-400 mb-4 no-print">{{ lotteryType() }} ပေါက်ဂဏန်း စာရင်းရှင်းတမ်း</h3>
        
