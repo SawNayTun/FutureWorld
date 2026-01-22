@@ -912,8 +912,13 @@ export class CodeAnalyzerComponent implements OnInit {
                   return;
               }
 
-              // Update Input
-              this.updateCurrentState('userInput', text);
+              // Update Input - Append instead of overwrite
+              // We only update if the text is final, otherwise it might be jittery
+              if (isFinal) {
+                  const currentInput = this.userInput();
+                  const separator = currentInput && !currentInput.endsWith('\n') ? '\n' : '';
+                  this.updateCurrentState('userInput', currentInput + separator + text);
+              }
           });
       }
   }

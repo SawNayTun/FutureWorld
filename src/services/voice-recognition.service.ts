@@ -14,9 +14,9 @@ export class VoiceRecognitionService {
       this.isSupported = true;
       // @ts-ignore
       this.recognition = new webkitSpeechRecognition();
-      this.recognition.continuous = false;
-      this.recognition.interimResults = true;
-      // Using Burmese as primary, but we'll manually map English words in processBurmeseNumbers
+      // Changed to true to keep listening until manually stopped
+      this.recognition.continuous = true;
+      this.recognition.interimResults = false;
       this.recognition.lang = 'my-MM'; 
     }
   }
@@ -27,33 +27,48 @@ export class VoiceRecognitionService {
       return;
     }
 
+    if (this.isListening()) {
+        console.warn("Already listening");
+        return;
+    }
+
     this.isListening.set(true);
+    
     try {
       this.recognition.start();
     } catch (e) {
-      console.error("Already started", e);
+      console.error("Failed to start recognition", e);
+      this.isListening.set(false);
     }
 
-    this.recognition.onresult = (event: any) => {
-      let finalTranscript = '';
-      let interimTranscript = '';
+    // Reset loop counter
+    let resultIndex = 0;
 
+    this.recognition.onresult = (event: any) => {
+      let chunk = '';
+      
+      // We only process the *new* results since the last event
       for (let i = event.resultIndex; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        } else {
-          interimTranscript += event.results[i][0].transcript;
+          chunk += event.results[i][0].transcript;
         }
       }
       
-      const textToProcess = finalTranscript || interimTranscript;
-      const processedText = this.processBurmeseNumbers(textToProcess);
-      this.transcript.set(processedText);
-      onResult(processedText, !!finalTranscript);
+      if (chunk) {
+          const processedText = this.processBurmeseNumbers(chunk);
+          this.transcript.set(processedText);
+          onResult(processedText, true);
+      }
     };
 
     this.recognition.onerror = (event: any) => {
       console.error('Voice error', event.error);
+      
+      // Ignore 'no-speech' errors as they are common in continuous mode
+      if (event.error === 'no-speech') {
+          return;
+      }
+
       this.isListening.set(false);
       if (event.error === 'not-allowed') {
           alert('မိုက်ကရိုဖုန်း အသုံးပြုခွင့် ပိတ်ထားပါသည်။ Browser Settings တွင် ဖွင့်ပေးပါ။ (https သို့မဟုတ် localhost တွင်သာ အလုပ်လုပ်ပါသည်)');
@@ -61,7 +76,9 @@ export class VoiceRecognitionService {
     };
 
     this.recognition.onend = () => {
-      this.isListening.set(false);
+        // If it stops but we didn't ask it to, check if we should restart? 
+        // For now, let the UI reflect it stopped.
+        this.isListening.set(false);
     };
   }
 
