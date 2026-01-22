@@ -146,7 +146,7 @@ export class CodeAnalyzerComponent implements OnInit {
           footerText: 'ကံကောင်းပါစေ',
           fontSize: 'medium',
           showDateTime: true
-      };
+      } as VoucherSettings;
   });
 
   // --- Relationship Management State (Shared) ---
@@ -716,7 +716,7 @@ export class CodeAnalyzerComponent implements OnInit {
           footerText: 'ကံကောင်းပါစေ',
           fontSize: 'medium',
           showDateTime: true
-      }
+      } as VoucherSettings
     };
   }
 
