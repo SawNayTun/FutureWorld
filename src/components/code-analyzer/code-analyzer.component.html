@@ -628,11 +628,11 @@
        <button (click)="closeVoucherModal()" class="absolute top-2 right-2 text-gray-500 hover:text-black no-print">&times;</button>
        
        <!-- Printable Area: POS Style -->
-       <div class="printable-area font-mono text-xs">
+       <div class="printable-area pos-voucher font-mono text-xs">
           <div class="text-center mb-2">
              <h3 class="text-lg font-bold uppercase">{{ bookieName() }}</h3>
              <p>{{ data.date }} {{ data.time }}</p>
-             <p class="text-[10px]">================================</p>
+             <p class="text-[10px] dashed-line">================================</p>
           </div>
           
           <div class="max-h-[50vh] overflow-y-auto no-scrollbar">
@@ -645,12 +645,12 @@
           </div>
 
           <div class="text-center mt-2">
-             <p class="text-[10px]">================================</p>
+             <p class="text-[10px] dashed-line">================================</p>
              <div class="flex justify-between font-bold text-sm my-1">
                 <span>စုစုပေါင်း ({{ data.totalCount }})</span>
                 <span>{{ data.totalAmount.toLocaleString() }} {{ data.currency }}</span>
              </div>
-             <p class="text-[10px]">================================</p>
+             <p class="text-[10px] dashed-line">================================</p>
              <p class="mt-2 text-[10px] font-semibold">Thank You!</p>
           </div>
        </div>
@@ -687,7 +687,7 @@
        </div>
 
        @if(payoutDetails(); as details) {
-        <div class="printable-area bg-white text-black p-6 rounded-lg flex-grow overflow-y-auto font-sans">
+        <div class="printable-area a4-report bg-white text-black p-6 rounded-lg flex-grow overflow-y-auto font-sans">
           
           <div class="text-center border-b-2 border-black pb-4 mb-4">
              <h4 class="text-2xl font-bold uppercase tracking-wide">{{ bookieName() }}</h4>
