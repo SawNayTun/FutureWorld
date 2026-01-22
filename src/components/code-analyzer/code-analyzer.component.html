@@ -662,7 +662,7 @@
 <!-- Payout Modal -->
 @if (showPayoutModal()) {
     <div class="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-        <div class="w-full max-w-4xl bg-slate-900 border border-green-700 rounded-lg shadow-2xl p-6 my-8">
+        <div class="w-full max-w-6xl bg-slate-900 border border-green-700 rounded-lg shadow-2xl p-6 my-8">
             <div class="flex justify-between items-center mb-6 no-print">
                 <h2 class="text-2xl font-bold text-green-500">ပေါက်ဂဏန်း စာရင်းရှင်းတမ်း</h2>
                 <button (click)="showPayoutModal.set(false)" class="text-slate-400 hover:text-white">&times;</button>
@@ -713,11 +713,15 @@
                         <table class="w-full text-xs text-left mb-6">
                             <thead>
                                 <tr class="border-b border-slate-700 text-slate-400 print:border-gray-300 print:text-gray-600">
-                                    <th class="py-2 font-bold">အမည်</th>
+                                    <th class="py-2 font-bold w-40">အမည်</th>
                                     <th class="py-2 text-right font-bold">ရောင်းရငွေ</th>
                                     <th class="py-2 text-right font-bold text-gray-500">ကော်မရှင်</th>
                                     <th class="py-2 text-right font-bold">သွင်းငွေ</th>
-                                    <th class="py-2 text-right font-bold text-red-400 print:text-red-600">ပေါက်ငွေ</th>
+                                    <!-- Detailed Win Columns -->
+                                    <th class="py-2 text-right font-bold text-yellow-500">ပေါက်ငွေ (Total)</th>
+                                    <th class="py-2 text-right font-bold text-red-300">ကာသီး (Cut)</th>
+                                    <th class="py-2 text-right font-bold text-red-500 print:text-red-600">လျော်ကြေး (Payout)</th>
+                                    
                                     <th class="py-2 text-right font-bold">ရှင်းရန်</th>
                                 </tr>
                             </thead>
@@ -725,18 +729,33 @@
                                 @for (agent of details.agentPayouts; track agent.name) {
                                     <tr class="border-b border-slate-800 hover:bg-slate-800/50 print:border-gray-200 print:hover:bg-transparent">
                                         <td class="py-2 text-left align-top">
-                                            <div class="font-bold text-slate-300 print:text-black">{{ agent.name }}</div>
+                                            <div class="font-bold text-slate-300 print:text-black text-sm">{{ agent.name }}</div>
                                             @if(agent.individualBets.length > 0) {
-                                                <div class="text-[10px] text-yellow-500 print:text-gray-600 font-mono mt-0.5">
+                                                <div class="text-[10px] text-gray-400 print:text-gray-600 font-mono mt-1 break-words">
                                                     ({{ agent.individualBets.join(', ') }})
                                                 </div>
                                             }
                                         </td>
                                         <td class="py-2 text-right align-top text-slate-400 print:text-black">{{ agent.totalSales.toLocaleString() }}</td>
                                         <td class="py-2 text-right align-top text-slate-500">{{ agent.commissionAmount.toLocaleString() }}</td>
-                                        <td class="py-2 text-right align-top text-slate-400 print:text-black">{{ agent.netSales.toLocaleString() }}</td>
-                                        <td class="py-2 text-right align-top font-bold text-red-400 print:text-red-600">{{ agent.payout > 0 ? agent.payout.toLocaleString() : '-' }}</td>
-                                        <td class="py-2 text-right align-top font-bold" [class]="agent.finalBalance >= 0 ? 'text-green-400 print:text-green-600' : 'text-red-400 print:text-red-600'">
+                                        <td class="py-2 text-right align-top text-slate-400 print:text-black font-semibold">{{ agent.netSales.toLocaleString() }}</td>
+                                        
+                                        <!-- Total Win (Potential) -->
+                                        <td class="py-2 text-right align-top text-yellow-500 print:text-yellow-700">
+                                            {{ agent.totalWinAmount > 0 ? agent.totalWinAmount.toLocaleString() : '-' }}
+                                        </td>
+                                        
+                                        <!-- Cut/Over Win -->
+                                        <td class="py-2 text-right align-top text-red-300 print:text-gray-500 text-[10px] font-mono pt-2.5">
+                                            {{ agent.overLimitWinAmount > 0 ? '(' + agent.overLimitWinAmount.toLocaleString() + ')' : '-' }}
+                                        </td>
+
+                                        <!-- Actual Held Payout -->
+                                        <td class="py-2 text-right align-top font-bold text-red-500 print:text-red-600 text-sm">
+                                            {{ agent.payout > 0 ? agent.payout.toLocaleString() : '-' }}
+                                        </td>
+
+                                        <td class="py-2 text-right align-top font-bold text-base" [class]="agent.finalBalance >= 0 ? 'text-green-400 print:text-green-600' : 'text-red-400 print:text-red-600'">
                                             {{ agent.finalBalance.toLocaleString() }}
                                         </td>
                                     </tr>
@@ -748,14 +767,24 @@
                     <!-- Other Payouts -->
                     @if (details.otherPayouts.length > 0) {
                          <h4 class="font-bold text-sm mb-2 border-b border-slate-700 mt-4 pb-2 text-slate-400 print:text-black print:border-gray-300">အခြား ပေါက်သူများ</h4>
-                         <div class="text-xs space-y-1">
-                             @for (p of details.otherPayouts; track p.name) {
-                                 <div class="flex justify-between py-1 border-b border-slate-800 print:border-gray-100">
-                                     <span>{{ p.name }} ({{ p.winAmount }})</span>
-                                     <span class="font-bold text-red-400 print:text-red-600">{{ p.payout.toLocaleString() }}</span>
-                                 </div>
-                             }
-                         </div>
+                         <table class="w-full text-xs text-left">
+                             <tbody>
+                                 @for (p of details.otherPayouts; track p.name) {
+                                     <tr class="border-b border-slate-800 print:border-gray-100 hover:bg-slate-800/50">
+                                         <td class="py-2 align-top">
+                                             <span class="font-bold text-slate-300 print:text-black">{{ p.name }}</span>
+                                             @if(p.individualBets.length > 0) {
+                                                <div class="text-[10px] text-gray-500 font-mono">({{ p.individualBets.join(', ') }})</div>
+                                             }
+                                         </td>
+                                         <td class="py-2 text-right align-top">
+                                             <span class="text-yellow-500 mr-2" title="Total Win">{{ p.totalWinAmount.toLocaleString() }}</span>
+                                             <span class="text-red-400 font-bold text-sm">{{ p.payout.toLocaleString() }}</span>
+                                         </td>
+                                     </tr>
+                                 }
+                             </tbody>
+                         </table>
                     }
                 </div>
                 
