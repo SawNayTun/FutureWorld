@@ -1,3 +1,4 @@
+
 <div class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:items-start print:justify-start print:p-0">
   <div class="w-full h-full max-w-7xl max-h-[90vh] bg-slate-800 border border-blue-700 rounded-lg shadow-2xl flex flex-col relative print:w-full print:h-auto print:max-w-none print:shadow-none print:border-none">
     
@@ -100,75 +101,81 @@
       <!-- Right: Report Detail -->
       <div class="w-2/3 bg-slate-900/50 p-4 rounded-lg border border-slate-700 overflow-y-auto">
         @if (selectedReport(); as report) {
-          <div class="printable-area a4-report print:pb-10">
-            <div class="flex justify-between items-center mb-4">
+          <!-- Report Detail Card: Dark on Screen, White on Print -->
+          <div class="printable-area bg-slate-900 text-slate-300 p-6 rounded shadow-sm border border-slate-700 print:bg-white print:text-black print:border-none print:pb-10">
+            <div class="flex justify-between items-center mb-6 border-b border-slate-700 pb-4 print:border-gray-300">
                <div>
-                   <h3 class="text-xl font-bold text-yellow-300">
-                      {{ report.lotteryType }} Report: {{ report.lotteryType === '2D' ? formatDate(report.date) + ' - ' + (report.session === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း') : report.drawDate }} ({{ report.mode }})
+                   <h3 class="text-xl font-bold text-white print:text-black">
+                      {{ report.lotteryType === '2D' ? formatDate(report.date) + ' - ' + (report.session === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း') : report.drawDate }}
                   </h3>
-                  <p class="text-sm text-slate-400">ဒိုင်အမည်: {{ report.bookieName }}</p>
+                  <p class="text-sm text-slate-500 font-bold mt-1 print:text-gray-500">{{ report.mode }} Report | ဒိုင်: {{ report.bookieName }}</p>
                </div>
-               <div class="no-print">
-                  <button (click)="printReport()" class="bg-sky-600/80 hover:bg-sky-700 text-white text-xs font-bold py-1 px-3 rounded transition mr-2">ပုံနှိပ်မည်</button>
-                  <button (click)="deleteReport(report)" class="bg-red-600/80 hover:bg-red-700 text-white text-xs font-bold py-1 px-3 rounded transition">ဖျက်မည်</button>
+               <div class="no-print flex gap-2">
+                  <!-- New Restore Button -->
+                  <button (click)="onRestore()" class="bg-yellow-600 hover:bg-yellow-700 text-white text-xs font-bold py-2 px-4 rounded transition flex items-center gap-1" title="မူလနေရာသို့ ပြန်တင်ပြီး ပြင်ဆင်မည်">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                    ပြန်တင်မည်
+                  </button>
+                  <button (click)="printReport()" class="bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold py-2 px-4 rounded transition">ပုံနှိပ်မည်</button>
+                  <button (click)="deleteReport(report)" class="bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 px-4 rounded transition">ဖျက်မည်</button>
                </div>
             </div>
             
-            <!-- Modified Layout for Print: Stacks vertically on print, Side-by-side on screen -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 print:block print:space-y-4">
-              <!-- Financial Details -->
-              <div class="bg-slate-800/50 p-4 rounded-lg space-y-3 text-sm print:mb-4">
-                  <div class="flex justify-between items-center border-b border-slate-700 pb-2">
-                      <span class="text-slate-400">စုစုပေါင်း ရောင်းရငွေ</span>
-                      <span class="font-mono font-bold text-white">{{ report.totalBetAmount.toLocaleString() }} {{ report.currencySymbol || 'K' }}</span>
-                  </div>
-
-                  @if(report.mode !== 'အေးဂျင့်') {
-                      <div class="flex justify-between items-center border-b border-slate-700 pb-2">
-                          <span class="text-slate-400">လစ်မစ်ကျော် (ကာသီး)</span>
-                          <span class="font-mono text-red-400">{{ report.totalOverLimitAmount.toLocaleString() }} {{ report.currencySymbol || 'K' }}</span>
-                      </div>
-                      <div class="flex justify-between items-center border-b border-slate-700 pb-2">
-                          <span class="text-slate-400">ကိုင်ငွေ (Held)</span>
-                          <span class="font-mono text-blue-300">{{ report.totalHeldAmount.toLocaleString() }} {{ report.currencySymbol || 'K' }}</span>
-                      </div>
-                       <div class="flex justify-between items-center border-b border-slate-700 pb-2">
-                          <span class="text-slate-400">ပေးရမည့် ကော်မရှင် ({{ report.commissionToPay }}%)</span>
-                          <span class="font-mono text-orange-400">{{ report.payableCommissionAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) }} {{ report.currencySymbol || 'K' }}</span>
-                      </div>
-                  }
-
-                  @if(report.mode === 'အလယ်ဒိုင်') {
-                      <div class="flex justify-between items-center border-b border-slate-700 pb-2">
-                          <span class="text-slate-400">ရမည့် ကော်မရှင် ({{ report.commissionFromUpperBookie }}%)</span>
-                          <span class="font-mono text-green-400">{{ report.receivableCommissionAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) }} {{ report.currencySymbol || 'K' }}</span>
-                      </div>
-                  }
-
-                  @if(report.mode === 'အေးဂျင့်') {
-                      <div class="flex justify-between items-center border-b border-slate-700 pb-2">
-                          <span class="text-slate-400">ရမည့် ကော်မရှင် ({{ report.agentCommissionFromBookie }}%)</span>
-                          <span class="font-mono text-green-400">{{ report.agentCommissionEarned.toLocaleString('en-US', {minimumFractionDigits: 2}) }} {{ report.currencySymbol || 'K' }}</span>
-                      </div>
-                  }
-
-                  <div class="flex justify-between items-center pt-2">
-                      <span class="text-slate-300 font-bold">အသားတင် (Net)</span>
-                      <span class="font-mono font-bold text-lg" [class]="report.netAmount >= 0 ? 'text-green-400' : 'text-red-400'">
-                          {{ report.netAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) }} {{ report.currencySymbol || 'K' }}
-                      </span>
-                  </div>
+            <!-- Modified Layout for Print -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 print:block print:space-y-4">
+              <!-- Financial Details (Table format) -->
+              <div class="text-sm">
+                  <table class="w-full text-left">
+                      <tbody>
+                          <tr class="border-b border-slate-800 print:border-gray-200">
+                              <td class="py-2 text-slate-400 print:text-gray-600">စုစုပေါင်း ရောင်းရငွေ</td>
+                              <td class="py-2 font-mono font-bold text-right text-white print:text-black">{{ report.totalBetAmount.toLocaleString() }}</td>
+                          </tr>
+                          @if(report.mode !== 'အေးဂျင့်') {
+                            <tr class="border-b border-slate-800 print:border-gray-200">
+                                <td class="py-2 text-slate-400 print:text-gray-600">လစ်မစ်ကျော် (ကာသီး)</td>
+                                <td class="py-2 font-mono text-red-400 text-right print:text-red-600">{{ report.totalOverLimitAmount.toLocaleString() }}</td>
+                            </tr>
+                            <tr class="border-b border-slate-800 print:border-gray-200">
+                                <td class="py-2 text-slate-400 print:text-gray-600">ကိုင်ငွေ (Held)</td>
+                                <td class="py-2 font-mono text-blue-400 text-right print:text-blue-600">{{ report.totalHeldAmount.toLocaleString() }}</td>
+                            </tr>
+                            <tr class="border-b border-slate-800 print:border-gray-200">
+                                <td class="py-2 text-slate-400 print:text-gray-600">ပေးရမည့် ကော်မရှင် ({{ report.commissionToPay }}%)</td>
+                                <td class="py-2 font-mono text-orange-400 text-right print:text-orange-600">{{ report.payableCommissionAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) }}</td>
+                            </tr>
+                          }
+                           @if(report.mode === 'အလယ်ဒိုင်') {
+                                <tr class="border-b border-slate-800 print:border-gray-200">
+                                    <td class="py-2 text-slate-400 print:text-gray-600">ရမည့် ကော်မရှင် ({{ report.commissionFromUpperBookie }}%)</td>
+                                    <td class="py-2 font-mono text-green-400 text-right print:text-green-600">{{ report.receivableCommissionAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) }}</td>
+                                </tr>
+                           }
+                           @if(report.mode === 'အေးဂျင့်') {
+                                <tr class="border-b border-slate-800 print:border-gray-200">
+                                    <td class="py-2 text-slate-400 print:text-gray-600">ရမည့် ကော်မရှင် ({{ report.agentCommissionFromBookie }}%)</td>
+                                    <td class="py-2 font-mono text-green-400 text-right print:text-green-600">{{ report.agentCommissionEarned.toLocaleString('en-US', {minimumFractionDigits: 2}) }}</td>
+                                </tr>
+                           }
+                           <tr class="border-t-2 border-slate-700 print:border-gray-300">
+                                <td class="py-3 font-bold text-lg text-white print:text-black">အသားတင် (Net)</td>
+                                <td class="py-3 font-mono font-bold text-lg text-right" [class]="report.netAmount >= 0 ? 'text-green-400 print:text-green-600' : 'text-red-400 print:text-red-600'">
+                                    {{ report.netAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) }}
+                                </td>
+                           </tr>
+                      </tbody>
+                  </table>
               </div>
 
               <!-- Bet Data Display -->
               @if(report.lotteryType === '2D') {
                 <div>
-                  <h4 class="font-bold text-slate-300 mb-2">ထိုးကြေးဇယား</h4>
-                  <div class="grid grid-cols-10 gap-px text-center text-xs font-mono">
+                  <h4 class="font-bold mb-3 border-b border-slate-700 pb-1 text-slate-300 print:text-black print:border-gray-200">ထိုးကြေးဇယား</h4>
+                  <div class="grid grid-cols-10 gap-px text-center text-xs font-mono border border-slate-700 bg-slate-700 print:border-gray-300 print:bg-gray-300">
                     @for(cell of reportGrid(); track cell.number) {
-                      <div [class]="'p-0.5 rounded-sm aspect-square print:aspect-auto print:h-12 flex flex-col justify-center ' + (cell.amount > 0 ? 'bg-sky-800/70' : 'bg-slate-800/50')">
-                        <span class="font-bold text-slate-400 text-[10px]">{{ cell.number }}</span>
-                        <span [class]="'font-semibold text-[10px] ' + (cell.amount > 0 ? 'text-yellow-300' : 'text-slate-600')">{{ cell.amount > 0 ? cell.amount.toLocaleString() : '-' }}</span>
+                      <div [class]="'p-1 flex flex-col justify-center ' + (cell.amount > 0 ? 'bg-slate-800 print:bg-blue-100' : 'bg-slate-900 print:bg-white')">
+                        <span class="font-bold text-[10px] text-slate-500 print:text-gray-500">{{ cell.number }}</span>
+                        <span [class]="'font-semibold text-[10px] ' + (cell.amount > 0 ? 'text-white print:text-blue-800' : 'text-slate-700 print:text-gray-300')">{{ cell.amount > 0 ? cell.amount.toLocaleString() : '-' }}</span>
                       </div>
                     }
                   </div>
@@ -176,12 +183,12 @@
               } @else {
                 <!-- Removed max-height for print -->
                 <div class="max-h-96 overflow-y-auto print:max-h-none print:overflow-visible">
-                  <h4 class="font-bold text-slate-300 mb-2">3D ထိုးကြေးစာရင်း</h4>
+                  <h4 class="font-bold mb-3 border-b border-slate-700 pb-1 text-slate-300 print:text-black print:border-gray-200">3D ထိုးကြေးစာရင်း</h4>
                   <div class="space-y-1">
                       @for(item of reportList(); track item.number) {
-                        <div class="flex justify-between items-center bg-slate-800/50 p-2 rounded-md">
-                            <span class="font-mono text-base text-yellow-300">{{ item.number }}</span>
-                            <span class="font-mono text-base text-white">{{ item.amount.toLocaleString() }}</span>
+                        <div class="flex justify-between items-center bg-slate-800 p-2 rounded border border-slate-700 text-sm print:bg-gray-50 print:border-gray-200">
+                            <span class="font-mono font-bold text-slate-300 print:text-gray-800">{{ item.number }}</span>
+                            <span class="font-mono text-slate-400 print:text-gray-600">{{ item.amount.toLocaleString() }}</span>
                         </div>
                       }
                   </div>
@@ -189,11 +196,10 @@
               }
               
               <!-- Raw Bet History -->
-              <!-- Removed max-height for print -->
-              <div class="md:col-span-2">
-                  <h4 class="font-bold text-slate-300 mb-2">ထည့်သွင်းခဲ့သော စာရင်းများ</h4>
-                  <div class="bg-slate-800 p-2 rounded max-h-40 overflow-y-auto print:max-h-none print:overflow-visible print:bg-transparent print:border print:border-gray-300">
-                      <p class="font-mono text-xs text-slate-400 whitespace-pre-wrap">{{ report.betHistory.join('\\n') }}</p>
+              <div class="md:col-span-2 mt-4 pt-4 border-t border-slate-700 print:border-gray-200">
+                  <h4 class="font-bold mb-2 text-xs text-slate-500 uppercase">Input History Log</h4>
+                  <div class="bg-slate-800 p-3 rounded border border-slate-700 max-h-40 overflow-y-auto print:bg-gray-50 print:border-gray-200 print:max-h-none print:overflow-visible">
+                      <p class="font-mono text-[10px] text-slate-400 whitespace-pre-wrap leading-tight print:text-gray-600">{{ report.betHistory.join('\n') }}</p>
                   </div>
               </div>
             </div>

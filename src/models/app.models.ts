@@ -1,3 +1,4 @@
+
 export interface Agent { 
   name: string; 
   commission: number; 
@@ -25,6 +26,13 @@ export interface GridCell {
   betsTooltip: string;
   overLimitAmount: number;
   limit: number;
+}
+
+export interface VoucherSettings {
+  headerText: string;
+  footerText: string;
+  fontSize: 'small' | 'medium' | 'large';
+  showDateTime: boolean;
 }
 
 export interface Report {

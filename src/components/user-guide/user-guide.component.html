@@ -1,3 +1,4 @@
+
 <div class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
   <div class="w-full h-full max-w-4xl max-h-[90vh] bg-slate-800 border border-slate-600 rounded-lg shadow-2xl flex flex-col relative">
     
@@ -22,6 +23,7 @@
         <h3 class="text-xl font-bold text-yellow-300 mb-3">အထွေထွေ ဆက်တင်များ</h3>
         <ul class="list-disc list-inside space-y-1 text-sm">
           <li><strong>ငွေကြေး သတ်မှတ်ခြင်း:</strong> ပင်မစာမျက်နှာ၏ ဘယ်ဘက်ခြမ်းရှိ ဆက်တင်များတွင် သင်အသုံးပြုလိုသော ငွေကြေး (ကျပ်/ဘတ်/ယွမ်) ကို ရွေးချယ်နိုင်ပါသည်။ ရွေးချယ်လိုက်သော ငွေကြေးသည် app တစ်ခုလုံးရှိ ငွေကြေးပြသမှုများတွင် သက်ရောက်မည်ဖြစ်သည်။</li>
+          <li><strong>Heatmap ကြည့်ရှုခြင်း:</strong> "Heatmap ဖွင့်" ခလုတ်ကို နှိပ်၍ ဂဏန်းများ၏ အရောင်းအနေအထားကို အရောင်ဖြင့် ခွဲခြားကြည့်ရှုနိုင်ပါသည်။ (အစိမ်း = နည်း၊ အဝါ = သင့်တင့်၊ လိမ်မော် = များ၊ အနီ = လစ်မစ်ကျော်)။</li>
         </ul>
       </section>
       
@@ -58,11 +60,21 @@
             <ul class="list-disc list-inside space-y-1 text-sm">
                <li><strong>အေးဂျင့် စီမံခန့်ခွဲမှု:</strong> "အလယ်ဒိုင်" ကဲ့သို့ပင် သင်၏ လက်အောက်ခံအေးဂျင့်များကို စီမံပါ။</li>
                <li><strong>Default & Individual Limit:</strong> Default Limit အပြင်၊ ဂဏန်းတစ်ခုချင်းစီကို သီးသန့် Limit သတ်မှတ်လိုပါက ပင်မဇယားရှိ မည်သည့်ဂဏန်းကိုမဆို Click နှိပ်၍ သတ်မှတ်နိုင်ပါသည်။</li>
-               <li><strong>Risk Management:</strong> ညာဘက်ခြမ်းတွင် ထိုးကြေးအများဆုံး ဂဏန်းများနှင့် လစ်မစ်ကျော်နေသော ဂဏန်းများကို ကြည့်ရှုပြီး သင်၏ Risk ကို ထိန်းချုပ်နိုင်ပါသည်။</li>
+               <li><strong>Risk Management:</strong> "Risk စစ်ဆေးမည်" ခလုတ်ကို နှိပ်၍ ထိုးကြေးအများဆုံး ဂဏန်းများနှင့် အကယ်၍ပေါက်ခဲ့ပါက ရှုံးနိုင်မည့်ပမာဏများကို ကြည့်ရှုနိုင်ပါသည်။</li>
                <li><strong>စာရင်းရှင်းခြင်း:</strong> ညာဘက်အပေါ်ထောင့်ရှိ "ပေါက်ဂဏန်း စာရင်းရှင်းရန်" ခလုတ်ကိုနှိပ်၍ ပေါက်ဂဏန်းထည့်သွင်းပြီး လျော်ကြေးငွေ စာရင်းကို အလွယ်တကူ တွက်ချက်နိုင်ပါသည်။</li>
             </ul>
           </div>
         </div>
+      </section>
+
+      <section>
+        <h3 class="text-xl font-bold text-yellow-300 mb-3">အသံစနစ် (Voice Input)</h3>
+        <p class="text-sm mb-2">စာရင်းသွင်းသည့်အကွက်ရှိ မိုက်ကရိုဖုန်းပုံစံ ခလုတ်ကိုနှိပ်၍ အသံဖြင့် စာရင်းသွင်းနိုင်ပါသည်။</p>
+        <ul class="list-disc list-inside space-y-1 text-sm">
+            <li><strong>ဂဏန်းများ:</strong> မြန်မာလို (တစ်၊ နှစ်၊ သုံး) သို့မဟုတ် အင်္ဂလိပ်လို (One, Two, Three) ပြောဆိုနိုင်ပါသည်။</li>
+            <li><strong>အခေါ်အဝေါ်များ:</strong> အပူး၊ နက္ခတ်၊ ပါဝါ၊ ခွေ၊ အာ (R) စသည့် အခေါ်အဝေါ်များကို အသံဖြင့် ပြောဆိုနိုင်ပါသည်။</li>
+            <li><strong>Command များ:</strong> "ပြန်ဖျက်" (Cancel)၊ "ထည့်မယ်" (Save) ဟုပြော၍ ခလုတ်နှိပ်စရာမလိုဘဲ လုပ်ဆောင်နိုင်ပါသည်။</li>
+        </ul>
       </section>
 
       <section>
@@ -88,7 +100,14 @@
               <tr><td class="p-2 border border-slate-600">ပိတ် / p</td><td class="p-2 border border-slate-600 font-mono">1p 100</td><td class="p-2 border border-slate-600">1 နောက်ပိတ် (01, 11, 21 ... 91) ဂဏန်းများ</td></tr>
               <tr><td class="p-2 border border-slate-600">ခွေ / k</td><td class="p-2 border border-slate-600 font-mono">12k 100</td><td class="p-2 border border-slate-600">1 နှင့် 2 ဂဏန်းများဖြင့် ခွေခြင်း (11, 12, 21, 22)</td></tr>
               <tr><td class="p-2 border border-slate-600">အပါ / a</td><td class="p-2 border border-slate-600 font-mono">1a 100</td><td class="p-2 border border-slate-600">1 ဂဏန်းပါသော ဂဏန်းအားလုံး (01, 10-19, 21...)</td></tr>
-              <tr><td class="p-2 border border-slate-600">ဗြိတ် / v / b</td><td class="p-2 border border-slate-600 font-mono">1v 100</td><td class="p-2 border border-slate-600">ဂဏန်းနှစ်လုံးပေါင်းফল 1 သို့မဟုတ် 11 ရသောဂဏန်းများ (10, 29, 38...)</td></tr>
+              <tr><td class="p-2 border border-slate-600">ဗြိတ် / v / b</td><td class="p-2 border border-slate-600 font-mono">1v 100</td><td class="p-2 border border-slate-600">နှစ်လုံးပေါင်း 1 သို့မဟုတ် 11 ရသောဂဏန်းများ (10, 29, 38...)</td></tr>
+              <tr><td class="p-2 border border-slate-600">စုံစုံ / ss</td><td class="p-2 border border-slate-600 font-mono">ss 100</td><td class="p-2 border border-slate-600">စုံဂဏန်းနှစ်လုံးတွဲများ (02, 24, 68...)</td></tr>
+              <tr><td class="p-2 border border-slate-600">မမ / mm</td><td class="p-2 border border-slate-600 font-mono">mm 100</td><td class="p-2 border border-slate-600">မဂဏန်းနှစ်လုံးတွဲများ (13, 35, 79...)</td></tr>
+              <tr><td class="p-2 border border-slate-600">စုံမ / sm</td><td class="p-2 border border-slate-600 font-mono">sm 100</td><td class="p-2 border border-slate-600">ရှေ့စုံ နောက်မ ဂဏန်းများ (01, 23, 45...)</td></tr>
+              <tr><td class="p-2 border border-slate-600">မစုံ / ms</td><td class="p-2 border border-slate-600 font-mono">ms 100</td><td class="p-2 border border-slate-600">ရှေ့မ နောက်စုံ ဂဏန်းများ (10, 32, 54...)</td></tr>
+              <tr><td class="p-2 border border-slate-600">ဆယ်ပြည့် / sp</td><td class="p-2 border border-slate-600 font-mono">sp 100</td><td class="p-2 border border-slate-600">နှစ်လုံးပေါင်း ၁၀ ရသော ဂဏန်းများနှင့် အပြန်များ (19, 28, 37...)</td></tr>
+              <tr><td class="p-2 border border-slate-600">ဘူ / bb</td><td class="p-2 border border-slate-600 font-mono">bb 100</td><td class="p-2 border border-slate-600">နှစ်လုံးပေါင်း ၀ သို့ ၁၀ ပြည့်သော ဂဏန်းများ (00, 19, 28...)</td></tr>
+              <tr><td class="p-2 border border-slate-600">အကပ် / ak</td><td class="p-2 border border-slate-600 font-mono">1ak 100</td><td class="p-2 border border-slate-600">1 ၏ ဘေးချင်းကပ် (0 နှင့် 2) နှင့်တွဲခြင်း (10, 12, 01, 21)</td></tr>
             </tbody>
           </table>
         </div>
