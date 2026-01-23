@@ -477,7 +477,7 @@ export class CodeAnalyzerComponent implements OnInit {
       return risks.sort((a, b) => a.netProfitLoss - b.netProfitLoss);
   });
 
-  worst10Risks = computed(() => this.riskAnalysis().slice(0, 10));
+  worst10Risks = computed(() => this.riskAnalysis().slice(10));
 
   agentsWithPerformance = computed<AgentWithPerformance[]>(() => {
     const salesMap = new Map<string, number>();
@@ -832,20 +832,36 @@ export class CodeAnalyzerComponent implements OnInit {
 
   handleKeyboardEvents(event: KeyboardEvent) {
     if (this.isPanicMode()) {
-       if (event.key === 'Escape' || event.key === 'F9') {
-           // Basic debounce not needed for native repeat but good for logic logic
-           // We rely on double tap logic in a separate listener or just single toggle here if simple
-           // Let's implement double tap escape or simple F9
-           // For stability, F9 toggles ON/OFF.
-           // BUT user requested calculator unlock code. So F9/Esc turns ON.
+       const key = event.key;
+       
+       // Allow Toggle Off with F9 again (Quick Exit)
+       if (key === 'F9') {
+           this.isPanicMode.set(false);
+           return;
+       }
+
+       // Block underlying interactions
+       event.preventDefault();
+
+       // Map Keyboard to Calculator Input
+       if (/^[0-9]$/.test(key)) {
+           this.onPanicCalculatorInput(key);
+       } else if (['+', '-', '*', '/'].includes(key)) {
+           this.onPanicCalculatorInput(key);
+       } else if (key === 'Enter' || key === '=') {
+           this.onPanicCalculatorInput('=');
+       } else if (key === 'Backspace') {
+           this.panicInput.update(v => v.slice(0, -1));
+       } else if (key === 'Delete' || key.toLowerCase() === 'c') {
+           this.onPanicCalculatorInput('C');
+       } else if (key === 'Escape') {
+           this.panicInput.set('');
        }
        return; 
     }
 
     if (event.key === 'F9' || event.key === 'Escape') {
-       // Check for double tap could be done here, but simple toggle is safer for "Panic"
        if (event.key === 'Escape') {
-           // Require double tap for ESC to avoid accidental closing of modals
            const now = Date.now();
            if (now - this.lastEscTime < 300) {
                this.activatePanicMode();
@@ -890,11 +906,27 @@ export class CodeAnalyzerComponent implements OnInit {
       if (val === 'C') {
           this.panicInput.set('');
       } else if (val === '=') {
-          if (this.panicInput() === '1234') {
+          const currentInput = this.panicInput();
+          // Unlock Code check
+          if (currentInput === '1234') {
               this.isPanicMode.set(false);
+              this.panicInput.set('');
           } else {
-              this.panicInput.set('Error');
-              setTimeout(() => this.panicInput.set(''), 1000);
+              // Actual Calculator Logic
+              try {
+                  // Basic validation to prevent unsafe eval
+                  if (/^[0-9+\-*/.]+$/.test(currentInput)) {
+                      // Use Function constructor for safer evaluation than direct eval
+                      // eslint-disable-next-line no-new-func
+                      const result = new Function('return ' + currentInput)();
+                      this.panicInput.set(String(result));
+                  } else {
+                      throw new Error('Invalid input');
+                  }
+              } catch (e) {
+                  this.panicInput.set('Error');
+                  setTimeout(() => this.panicInput.set(''), 1000);
+              }
           }
       } else {
           this.panicInput.update(v => v + val);
@@ -1506,7 +1538,6 @@ export class CodeAnalyzerComponent implements OnInit {
     const totalOverLimitBet = cell ? cell.overLimitAmount : 0;
     const totalHeldBet = totalBet - totalOverLimitBet;
     
-    // We calculate payout strictly on Held amount for the bookie
     const totalHeldPayout = totalHeldBet * this.payoutRate();
     const totalOverLimitPayout = totalOverLimitBet * this.payoutRate();
     
@@ -1520,41 +1551,30 @@ export class CodeAnalyzerComponent implements OnInit {
         return idxA - idxB;
     });
 
-    // Tracking maps for agents
     const sourceHeldMap = new Map<string, number>();
-    const sourceOverMap = new Map<string, number>();
-    const sourceTotalWinMap = new Map<string, number>(); // Stores total winning bet amount (Held + Over)
-    const sourceWinBetsList = new Map<string, number[]>(); // Stores individual bets [100, 200, 500]
+    const sourceTotalMap = new Map<string, number>(); // For reference/debug if needed
+    const sourceWinBetsMap = new Map<string, number[]>();
 
     let currentTotalHeld = 0;
 
     sortedBets.forEach(bet => {
         const remainingCapacity = Math.max(0, limit - currentTotalHeld);
         let heldPortion = 0;
-        let overPortion = 0;
 
         if (remainingCapacity > 0) {
             heldPortion = Math.min(bet.amount, remainingCapacity);
             currentTotalHeld += heldPortion;
-            overPortion = bet.amount - heldPortion;
-        } else {
-            overPortion = bet.amount;
         }
         
         if (heldPortion > 0) {
             sourceHeldMap.set(bet.source, (sourceHeldMap.get(bet.source) || 0) + heldPortion);
         }
         
-        if (overPortion > 0) {
-            sourceOverMap.set(bet.source, (sourceOverMap.get(bet.source) || 0) + overPortion);
-        }
+        sourceTotalMap.set(bet.source, (sourceTotalMap.get(bet.source) || 0) + bet.amount);
         
-        sourceTotalWinMap.set(bet.source, (sourceTotalWinMap.get(bet.source) || 0) + bet.amount);
-        
-        // Accumulate individual bet amounts for display
-        const list = sourceWinBetsList.get(bet.source) || [];
+        const list = sourceWinBetsMap.get(bet.source) || [];
         list.push(bet.amount);
-        sourceWinBetsList.set(bet.source, list);
+        sourceWinBetsMap.set(bet.source, list);
     });
 
     const agentPerformance = this.agentsWithPerformance();
@@ -1566,21 +1586,19 @@ export class CodeAnalyzerComponent implements OnInit {
     const agentPayouts: AgentPayoutInfo[] = [];
     const otherPayouts: AgentPayoutInfo[] = [];
 
-    const payoutRate = this.payoutRate();
-
     this.agents().forEach(agent => {
         const totalSales = agentSalesMap.get(agent.name) || 0;
-        
-        // Include agent if they have sales OR any winning bets (even if cut completely)
-        if (totalSales > 0 || sourceTotalWinMap.has(agent.name)) {
+        // Check if agent has sales OR has any winning bets (even if rejected/over limit, they are in the breakdown)
+        if (totalSales > 0 || sourceWinBetsMap.has(agent.name)) {
             const heldWinBetAmount = sourceHeldMap.get(agent.name) || 0;
-            const overLimitWinBetAmount = sourceOverMap.get(agent.name) || 0;
-            const totalWinBetAmount = sourceTotalWinMap.get(agent.name) || 0;
-
-            const payout = heldWinBetAmount * payoutRate; // Actual Payout Liability
-            const totalWinAmount = totalWinBetAmount * payoutRate; // Gross Win
-            const overLimitWinAmount = overLimitWinBetAmount * payoutRate; // Passed/Rejected Win
+            const payout = heldWinBetAmount * this.payoutRate();
             
+            const totalWinBetAmount = sourceTotalMap.get(agent.name) || 0;
+            const totalWinAmount = totalWinBetAmount * this.payoutRate();
+
+            const overLimitWinBetAmount = totalWinBetAmount - heldWinBetAmount;
+            const overLimitWinAmount = overLimitWinBetAmount * this.payoutRate();
+
             const commissionRate = agent.commission;
             const commissionAmount = totalSales * (commissionRate / 100);
             const netSales = totalSales - commissionAmount;
@@ -1592,19 +1610,20 @@ export class CodeAnalyzerComponent implements OnInit {
                 commissionRate,
                 commissionAmount,
                 netSales,
+                
                 totalWinBetAmount,
                 totalWinAmount,
                 overLimitWinBetAmount,
                 overLimitWinAmount,
                 heldWinBetAmount,
-                payout, // Pay only on Held portion
+                payout, 
+                
                 finalBalance,
-                individualBets: sourceWinBetsList.get(agent.name) || []
+                individualBets: sourceWinBetsMap.get(agent.name) || []
             });
         }
     });
 
-    // Handle "Other" sources (Direct Input, Restored Reports, etc.)
     const nonAgentSalesMap = new Map<string, number>();
     this.lotteryData().forEach(bets => {
         bets.forEach(bet => {
@@ -1618,12 +1637,13 @@ export class CodeAnalyzerComponent implements OnInit {
         if (knownAgentNames.has(source)) return;
 
         const heldWinBetAmount = sourceHeldMap.get(source) || 0;
-        const overLimitWinBetAmount = sourceOverMap.get(source) || 0;
-        const totalWinBetAmount = sourceTotalWinMap.get(source) || 0;
+        const payout = heldWinBetAmount * this.payoutRate();
+        
+        const totalWinBetAmount = sourceTotalMap.get(source) || 0;
+        const totalWinAmount = totalWinBetAmount * this.payoutRate();
 
-        const payout = heldWinBetAmount * payoutRate;
-        const totalWinAmount = totalWinBetAmount * payoutRate;
-        const overLimitWinAmount = overLimitWinBetAmount * payoutRate;
+        const overLimitWinBetAmount = totalWinBetAmount - heldWinBetAmount;
+        const overLimitWinAmount = overLimitWinBetAmount * this.payoutRate();
         
         const commissionRate = 0; 
         const commissionAmount = 0;
@@ -1636,14 +1656,16 @@ export class CodeAnalyzerComponent implements OnInit {
              commissionRate,
              commissionAmount,
              netSales,
+             
              totalWinBetAmount,
              totalWinAmount,
              overLimitWinBetAmount,
              overLimitWinAmount,
              heldWinBetAmount,
              payout,
+
              finalBalance,
-             individualBets: sourceWinBetsList.get(source) || []
+             individualBets: sourceWinBetsMap.get(source) || []
         });
     });
 
@@ -1723,97 +1745,91 @@ export class CodeAnalyzerComponent implements OnInit {
       return;
     }
 
-    try {
-        const type = report.lotteryType;
-        if (type !== '2D' && type !== '3D') {
-            throw new Error('Invalid Lottery Type in Report');
-        }
-        this.lotteryType.set(type);
-        
-        // Normalize mode from report (Eng/Burmese legacy to Current App Standard)
-        let targetMode = 'ဒိုင်ကြီး'; // Default fallback
-        const lowerMode = (report.mode || '').toLowerCase();
-        
-        if (lowerMode.includes('agent') || lowerMode.includes('အေးဂျင့်')) targetMode = 'အေးဂျင့်';
-        else if (lowerMode.includes('middle') || lowerMode.includes('အလယ်')) targetMode = 'အလယ်ဒိုင်';
-        else if (lowerMode.includes('main') || lowerMode.includes('ဒိုင်ကြီး')) targetMode = 'ဒိုင်ကြီး';
+    const type = report.lotteryType;
+    this.lotteryType.set(type);
+    
+    // Normalize mode from report (Eng/Burmese legacy to Current App Standard)
+    let targetMode = 'ဒိုင်ကြီး'; // Default fallback
+    const lowerMode = (report.mode || '').toLowerCase();
+    
+    if (lowerMode.includes('agent') || lowerMode.includes('အေးဂျင့်')) targetMode = 'အေးဂျင့်';
+    else if (lowerMode.includes('middle') || lowerMode.includes('အလယ်')) targetMode = 'အလယ်ဒိုင်';
+    else if (lowerMode.includes('main') || lowerMode.includes('ဒိုင်ကြီး')) targetMode = 'ဒိုင်ကြီး';
 
-        this.activeMode.set(targetMode);
-        
-        let restoredHistory: HistoryEntry[] = [];
+    this.activeMode.set(targetMode);
+    
+    let restoredHistory: HistoryEntry[] = [];
 
-        // Strategy 1: Try to restore from original input history (Best for editing)
-        if (report.betHistory && Array.isArray(report.betHistory) && report.betHistory.length > 0) {
-            restoredHistory = report.betHistory.map(inputStr => ({
-                id: crypto.randomUUID(),
-                input: String(inputStr || ''), // Ensure it's a string
-                source: targetMode === 'အေးဂျင့်' ? (report.bookieName || 'Restored') : 'Restored Report', 
-                mode: targetMode
-            }));
-        } 
-        
-        // Strategy 2: Fallback to Lottery Data Snapshot if history is missing/empty
-        if (restoredHistory.length === 0 && report.lotteryData) {
-            let entries: [string, any][] = [];
-            const rawData = report.lotteryData as any;
-            
-            if (Array.isArray(rawData)) {
-                entries = rawData;
-            } else if (typeof rawData === 'object' && rawData !== null) {
-                entries = Object.entries(rawData);
-            }
-
-            if (entries.length > 0) {
-                const lines = entries
-                    .map(([num, amount]) => `${num} ${Number(amount) || 0}`)
-                    .filter(line => !line.endsWith(' 0'));
-                
-                if (lines.length > 0) {
-                    restoredHistory = [{
-                        id: crypto.randomUUID(),
-                        input: lines.join('\n'),
-                        source: 'Restored from Snapshot',
-                        mode: targetMode
-                    }];
-                }
-            }
-        }
-
-        const safeBookieName = report.bookieName || ((targetMode === '2D' ? 'My 2D' : 'My 3D') + ' ' + targetMode);
-
-        this.appState.update(current => ({
-            ...current,
-            [type]: {
-                ...current[type],
-                betHistory: restoredHistory,
-                defaultLimit: report.defaultLimit || current[type].defaultLimit,
-                individualLimits: new Map(report.individualLimits),
-                payoutRate: report.payoutRate || current[type].payoutRate,
-                commissionToPay: report.commissionToPay || current[type].commissionToPay,
-                commissionFromUpperBookie: report.commissionFromUpperBookie || current[type].commissionFromUpperBookie,
-                agentCommissionFromBookie: report.agentCommissionFromBookie || current[type].agentCommissionFromBookie,
-                session: report.session || current[type].session,
-                drawDate: report.drawDate || current[type].drawDate,
-                // Restore bookie name based on targetMode to ensure context consistency
-                myAgentName: targetMode === 'အေးဂျင့်' ? safeBookieName : current[type].myAgentName,
-                myMiddleBookieName: targetMode === 'အလယ်ဒိုင်' ? safeBookieName : current[type].myMiddleBookieName,
-                myMainBookieName: targetMode === 'ဒိုင်ကြီး' ? safeBookieName : current[type].myMainBookieName,
-                userInput: '', // Clear previous input to avoid confusion
-            }
+    // Strategy 1: Try to restore from original input history (Best for editing)
+    if (report.betHistory && Array.isArray(report.betHistory) && report.betHistory.length > 0) {
+        restoredHistory = report.betHistory.map(inputStr => ({
+            id: crypto.randomUUID(),
+            input: inputStr,
+            source: targetMode === 'အေးဂျင့်' ? report.bookieName : 'Restored Report', 
+            mode: targetMode
         }));
+    } 
+    
+    // Strategy 2: Fallback to Lottery Data Snapshot if history is missing/empty
+    // This handles legacy reports where history wasn't saved correctly but totals exist.
+    if (restoredHistory.length === 0 && report.lotteryData) {
+        let entries: [string, any][] = [];
+        const rawData = report.lotteryData as any;
         
-        if (restoredHistory.length > 0) {
-            this.statusMessage.set('မှတ်တမ်းကို အောင်မြင်စွာ ပြန်တင်လိုက်ပါပြီ။');
-        } else {
-            this.statusMessage.set('သတိပေးချက်: ဤမှတ်တမ်းတွင် ဒေတာမရှိပါ။');
+        // Handle different legacy serialization formats (Array vs Object)
+        if (Array.isArray(rawData)) {
+            entries = rawData;
+        } else if (typeof rawData === 'object' && rawData !== null) {
+            entries = Object.entries(rawData);
         }
-    } catch (error) {
-        console.error("Restore failed", error);
-        this.statusMessage.set('Restore လုပ်ရာတွင် အမှားအယွင်းဖြစ်ပေါ်ပါသည်။');
-    } finally {
-        this.showReports.set(false); // Always close the modal
-        setTimeout(() => this.statusMessage.set(''), 4000);
+
+        if (entries.length > 0) {
+            // Reconstruct a single bulk input string: "00 500\n01 1000..."
+            const lines = entries
+                .map(([num, amount]) => `${num} ${Number(amount) || 0}`)
+                .filter(line => !line.endsWith(' 0')); // Skip zero amounts
+            
+            if (lines.length > 0) {
+                restoredHistory = [{
+                    id: crypto.randomUUID(),
+                    input: lines.join('\n'),
+                    source: 'Restored from Snapshot',
+                    mode: targetMode
+                }];
+                this.statusMessage.set('မှတ်တမ်းဟောင်း (History) မရှိသဖြင့် ဇယားမှ တိုက်ရိုက်ပြန်လည်ယူထားပါသည်။');
+            }
+        }
     }
+
+    this.appState.update(current => ({
+        ...current,
+        [type]: {
+            ...current[type],
+            betHistory: restoredHistory,
+            defaultLimit: report.defaultLimit,
+            individualLimits: new Map(report.individualLimits),
+            payoutRate: report.payoutRate,
+            commissionToPay: report.commissionToPay,
+            commissionFromUpperBookie: report.commissionFromUpperBookie,
+            agentCommissionFromBookie: report.agentCommissionFromBookie,
+            session: report.session || current[type].session,
+            drawDate: report.drawDate || current[type].drawDate,
+            // Restore bookie name based on targetMode to ensure context consistency
+            myAgentName: targetMode === 'အေးဂျင့်' ? report.bookieName : current[type].myAgentName,
+            myMiddleBookieName: targetMode === 'အလယ်ဒိုင်' ? report.bookieName : current[type].myMiddleBookieName,
+            myMainBookieName: targetMode === 'ဒိုင်ကြီး' ? report.bookieName : current[type].myMainBookieName,
+        }
+    }));
+
+    this.showReports.set(false);
+    
+    if (restoredHistory.length > 0) {
+        this.statusMessage.set('မှတ်တမ်းကို အောင်မြင်စွာ ပြန်တင်လိုက်ပါပြီ။ ပြင်ဆင်မှုများ ဆက်လက်ပြုလုပ်နိုင်ပါသည်။');
+    } else {
+        this.statusMessage.set('သတိပေးချက်: ဤမှတ်တမ်းတွင် ဒေတာမရှိပါ။');
+    }
+    
+    setTimeout(() => this.statusMessage.set(''), 4000);
   }
 
   copyToClipboard(text: string) { if(text) navigator.clipboard.writeText(text); }
