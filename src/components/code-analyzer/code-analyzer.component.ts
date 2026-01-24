@@ -98,6 +98,8 @@ interface AppState {
     drawDate?: string;
     userInput: string;
     voucherSettings?: VoucherSettings;
+    agentDrafts?: Record<string, string[]>; // Store pending drafts (Green Box) per agent
+    agentInputs?: Record<string, string>;   // Store text input (Textarea) per agent
 }
 
 @Component({
@@ -196,7 +198,14 @@ export class CodeAnalyzerComponent implements OnInit {
   winningNumber = signal('');
   payoutDetails = signal<PayoutDetails | null>(null);
   
-  pendingSubmissions = signal<string[]>([]);
+  // Replaced writable signal with computed for per-agent drafts
+  pendingSubmissions = computed(() => {
+      const type = this.lotteryType();
+      const name = this.bookieName();
+      const drafts = this.appState()[type].agentDrafts || {};
+      return drafts[name] || [];
+  });
+
   showSubmissionModal = signal(false);
   submissionText = signal('');
   
@@ -260,9 +269,20 @@ export class CodeAnalyzerComponent implements OnInit {
   lotteryData = computed<Map<string, BetDetail[]>>(() => {
     const data = new Map<string, BetDetail[]>();
     const currentMode = this.activeMode();
+    const currentAgentName = this.bookieName();
+
     const history = this.betHistory().filter(h => {
         const entryMode = h.mode || 'ဒိုင်ကြီး';
-        return entryMode === currentMode;
+        // Base filter: Mode must match
+        if (entryMode !== currentMode) return false;
+
+        // Specific filter for Agent Mode: Source must match current Profile Name
+        // This ensures the grid only shows data for the currently selected profile
+        if (currentMode === 'အေးဂျင့်') {
+            return h.source === currentAgentName;
+        }
+
+        return true;
     });
 
     for (const entry of history) {
@@ -279,9 +299,16 @@ export class CodeAnalyzerComponent implements OnInit {
   // --- Computed Signals (UI) ---
   recentHistory = computed(() => {
       const currentMode = this.activeMode();
+      const currentAgentName = this.bookieName();
+      
       return this.betHistory()
         .filter(h => {
              const entryMode = h.mode || 'ဒိုင်ကြီး';
+             // If in Agent mode, filter strictly by the current Agent Name (Source)
+             // This ensures switching profiles clears the history view for the user
+             if (currentMode === 'အေးဂျင့်') {
+                 return entryMode === currentMode && h.source === currentAgentName;
+             }
              return entryMode === currentMode;
         })
         .slice(-20)
@@ -477,7 +504,7 @@ export class CodeAnalyzerComponent implements OnInit {
       return risks.sort((a, b) => a.netProfitLoss - b.netProfitLoss);
   });
 
-  worst10Risks = computed(() => this.riskAnalysis().slice(10));
+  worst10Risks = computed(() => this.riskAnalysis().slice(0, 10));
 
   agentsWithPerformance = computed<AgentWithPerformance[]>(() => {
     const salesMap = new Map<string, number>();
@@ -725,7 +752,9 @@ export class CodeAnalyzerComponent implements OnInit {
           footerText: 'ကံကောင်းပါစေ',
           fontSize: 'medium',
           showDateTime: true
-      } as VoucherSettings
+      } as VoucherSettings,
+      agentDrafts: {},
+      agentInputs: {}
     };
   }
 
@@ -755,7 +784,9 @@ export class CodeAnalyzerComponent implements OnInit {
       myMiddleBookieName,
       myMainBookieName,
       agentProfiles: profiles,
-      voucherSettings: stored.voucherSettings || initial.voucherSettings // Default fallback if missing
+      voucherSettings: stored.voucherSettings || initial.voucherSettings,
+      agentDrafts: stored.agentDrafts || {}, 
+      agentInputs: stored.agentInputs || {}
     };
   }
   
@@ -782,9 +813,34 @@ export class CodeAnalyzerComponent implements OnInit {
 
   onProfileSelect(event: Event) {
       const select = event.target as HTMLSelectElement;
-      const name = select.value;
-      if (name) {
-          this.updateBookieName(name);
+      const newName = select.value;
+      if (newName) {
+          const type = this.lotteryType();
+          const currentName = this.bookieName();
+          const currentInput = this.userInput();
+
+          // 1. Update State cleanly
+          this.appState.update(current => {
+              const currentState = current[type];
+              const inputs = currentState.agentInputs || {};
+              
+              // Save old input
+              const updatedInputs = { ...inputs, [currentName]: currentInput };
+              
+              // Get new input
+              const nextInput = updatedInputs[newName] || '';
+
+              return {
+                  ...current,
+                  [type]: {
+                      ...currentState,
+                      agentInputs: updatedInputs,
+                      myAgentName: newName,
+                      userInput: nextInput // Restore input for new profile
+                  }
+              };
+          });
+
           select.value = '';
       }
   }
@@ -823,6 +879,7 @@ export class CodeAnalyzerComponent implements OnInit {
               const newProfiles = profiles.filter(p => p !== currentName);
               let nextName = current[type].myAgentName;
               if (nextName === currentName) nextName = newProfiles[0];
+              // Also clear drafts for deleted profile? Maybe safer to keep but unreachable unless added back.
               return { ...current, [type]: { ...current[type], agentProfiles: newProfiles, myAgentName: nextName } };
            });
            this.statusMessage.set("ဖျက်ပြီးပါပြီ။");
@@ -833,17 +890,11 @@ export class CodeAnalyzerComponent implements OnInit {
   handleKeyboardEvents(event: KeyboardEvent) {
     if (this.isPanicMode()) {
        const key = event.key;
-       
-       // Allow Toggle Off with F9 again (Quick Exit)
        if (key === 'F9') {
            this.isPanicMode.set(false);
            return;
        }
-
-       // Block underlying interactions
        event.preventDefault();
-
-       // Map Keyboard to Calculator Input
        if (/^[0-9]$/.test(key)) {
            this.onPanicCalculatorInput(key);
        } else if (['+', '-', '*', '/'].includes(key)) {
@@ -868,7 +919,7 @@ export class CodeAnalyzerComponent implements OnInit {
            }
            this.lastEscTime = now;
        } else {
-           this.activatePanicMode(); // F9 instant
+           this.activatePanicMode();
        }
     }
 
@@ -907,16 +958,12 @@ export class CodeAnalyzerComponent implements OnInit {
           this.panicInput.set('');
       } else if (val === '=') {
           const currentInput = this.panicInput();
-          // Unlock Code check
           if (currentInput === '1234') {
               this.isPanicMode.set(false);
               this.panicInput.set('');
           } else {
-              // Actual Calculator Logic
               try {
-                  // Basic validation to prevent unsafe eval
                   if (/^[0-9+\-*/.]+$/.test(currentInput)) {
-                      // Use Function constructor for safer evaluation than direct eval
                       // eslint-disable-next-line no-new-func
                       const result = new Function('return ' + currentInput)();
                       this.panicInput.set(String(result));
@@ -939,7 +986,6 @@ export class CodeAnalyzerComponent implements OnInit {
           this.voiceService.stopListening();
       } else {
           this.voiceService.startListening((text, isFinal) => {
-              // Command Mode Logic
               if (text.includes('ပြန်ဖျက်') || text.toLowerCase().includes('cancel')) {
                   this.updateCurrentState('userInput', '');
                   this.statusMessage.set('အသံဖြင့် ပြန်ဖျက်လိုက်ပါပြီ။');
@@ -952,8 +998,6 @@ export class CodeAnalyzerComponent implements OnInit {
                   setTimeout(() => this.statusMessage.set(''), 2000);
                   return;
               }
-
-              // Update Input
               this.updateCurrentState('userInput', text);
           });
       }
@@ -994,7 +1038,24 @@ export class CodeAnalyzerComponent implements OnInit {
     const source = this.activeMode() === 'အေးဂျင့်' ? this.bookieName() : 'Direct Input';
     if (this.addBetsToHistory(input, source)) {
       if (this.activeMode() === 'အေးဂျင့်') {
-        this.pendingSubmissions.update(s => [...s, input]);
+        const type = this.lotteryType();
+        this.appState.update(current => {
+            const drafts = current[type].agentDrafts || {};
+            const agentList = drafts[source] || [];
+            
+            // Also clear the saved input for this agent since it's now submitted
+            const inputs = current[type].agentInputs || {};
+            const updatedInputs = { ...inputs, [source]: '' };
+
+            return {
+                ...current,
+                [type]: {
+                    ...current[type],
+                    agentDrafts: { ...drafts, [source]: [...agentList, input] },
+                    agentInputs: updatedInputs
+                }
+            };
+        });
       }
       this.updateCurrentState('userInput', '');
     }
@@ -1041,6 +1102,15 @@ export class CodeAnalyzerComponent implements OnInit {
           const entryMode = h.mode || 'ဒိုင်ကြီး';
           return entryMode !== currentMode;
       });
+      
+      let newDrafts = current[type].agentDrafts || {};
+      let newInputs = current[type].agentInputs || {};
+      
+      if (currentMode === 'အေးဂျင့်') {
+          const currentAgent = this.bookieName();
+          newDrafts = { ...newDrafts, [currentAgent]: [] };
+          newInputs = { ...newInputs, [currentAgent]: '' };
+      }
 
       return {
         ...current,
@@ -1048,6 +1118,8 @@ export class CodeAnalyzerComponent implements OnInit {
           ...current[type],
           betHistory: retainedHistory,
           userInput: '',
+          agentDrafts: newDrafts,
+          agentInputs: newInputs
         }
       };
     });
@@ -1055,10 +1127,6 @@ export class CodeAnalyzerComponent implements OnInit {
     this.inboxInput.set('');
     this.confirmationMessage.set('');
     this.submissionText.set('');
-    
-    if (currentMode === 'အေးဂျင့်') {
-        this.pendingSubmissions.set([]);
-    }
     
     if (currentMode === 'အလယ်ဒိုင်' || currentMode === 'ဒိုင်ကြီး') {
         this.acceptedSubmissions.set([]);
@@ -1095,25 +1163,29 @@ export class CodeAnalyzerComponent implements OnInit {
     const newHistory = [...history];
     newHistory.splice(indexToRemove, 1);
 
-    this.appState.update(current => ({
-      ...current,
-      [type]: {
-        ...current[type],
-        betHistory: newHistory
-      }
-    }));
-    
-    if (this.activeMode() === 'အေးဂျင့်' && entryToDelete.source === this.bookieName()) {
-      this.pendingSubmissions.update(submissions => {
-        const index = submissions.lastIndexOf(entryToDelete.input);
-        if (index > -1) {
-          const newSubmissions = [...submissions];
-          newSubmissions.splice(index, 1);
-          return newSubmissions;
+    this.appState.update(current => {
+        let newDrafts = current[type].agentDrafts || {};
+        
+        if (currentMode === 'အေးဂျင့်' && entryToDelete.source === this.bookieName()) {
+            const agentName = this.bookieName();
+            const agentList = newDrafts[agentName] || [];
+            const index = agentList.lastIndexOf(entryToDelete.input);
+            if (index > -1) {
+                const newList = [...agentList];
+                newList.splice(index, 1);
+                newDrafts = { ...newDrafts, [agentName]: newList };
+            }
         }
-        return submissions;
-      });
-    }
+
+        return {
+            ...current,
+            [type]: {
+                ...current[type],
+                betHistory: newHistory,
+                agentDrafts: newDrafts
+            }
+        };
+    });
   }
 
   deleteHistoryEntry(idToDelete: string): void {
@@ -1121,25 +1193,30 @@ export class CodeAnalyzerComponent implements OnInit {
     const entryToDelete = this.betHistory().find(h => h.id === idToDelete);
     if (!entryToDelete) return;
 
-    this.appState.update(current => ({
-      ...current,
-      [type]: {
-        ...current[type],
-        betHistory: current[type].betHistory.filter(e => e.id !== idToDelete)
-      }
-    }));
-    
-    if (this.activeMode() === 'အေးဂျင့်' && entryToDelete.source === this.bookieName()) {
-      this.pendingSubmissions.update(submissions => {
-        const index = submissions.indexOf(entryToDelete.input);
-        if (index > -1) {
-          const newSubmissions = [...submissions];
-          newSubmissions.splice(index, 1);
-          return newSubmissions;
+    this.appState.update(current => {
+        const newHistory = current[type].betHistory.filter(e => e.id !== idToDelete);
+        let newDrafts = current[type].agentDrafts || {};
+
+        if (this.activeMode() === 'အေးဂျင့်' && entryToDelete.source === this.bookieName()) {
+            const agentName = this.bookieName();
+            const agentList = newDrafts[agentName] || [];
+            const index = agentList.indexOf(entryToDelete.input); // Remove the specific matching input string
+            if (index > -1) {
+                const newList = [...agentList];
+                newList.splice(index, 1);
+                newDrafts = { ...newDrafts, [agentName]: newList };
+            }
         }
-        return submissions;
-      });
-    }
+
+        return {
+            ...current,
+            [type]: {
+                ...current[type],
+                betHistory: newHistory,
+                agentDrafts: newDrafts
+            }
+        };
+    });
   }
 
   editHistoryEntry(entryToEdit: HistoryEntry): void {
@@ -1508,14 +1585,25 @@ export class CodeAnalyzerComponent implements OnInit {
 
   finishBatch() {
     this.copyToClipboard(this.submissionText());
-    this.pendingSubmissions.set([]); 
+    this.clearSubmissions(); // Re-use clear logic which now targets specific agent
     this.showSubmissionModal.set(false);
-    this.statusMessage.set('စာရင်းပို့ပြီးပါပြီ။ နောက်တစ်သုတ် စတင်နိုင်ပါပြီ။ (ပင်မဇယားတွင် စုစုပေါင်း ကျန်ရှိနေမည်)');
+    this.statusMessage.set(`'${this.bookieName()}' အတွက် စာရင်းပို့ပြီးပါပြီ။ နောက်တစ်သုတ် စတင်နိုင်ပါပြီ။`);
     setTimeout(() => this.statusMessage.set(''), 4000);
   }
   
   clearSubmissions() {
-    this.pendingSubmissions.set([]);
+    const type = this.lotteryType();
+    const currentName = this.bookieName();
+    this.appState.update(current => {
+        const drafts = current[type].agentDrafts || {};
+        return {
+            ...current,
+            [type]: {
+                ...current[type],
+                agentDrafts: { ...drafts, [currentName]: [] }
+            }
+        };
+    });
   }
   
   openPayoutModal() { this.showPayoutModal.set(true); this.payoutDetails.set(null); this.winningNumber.set(''); }

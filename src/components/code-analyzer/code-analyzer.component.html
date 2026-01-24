@@ -521,7 +521,10 @@
 
             <!-- Pending Submissions Panel -->
             <section class="bg-slate-800/90 rounded-lg p-4 border border-slate-700 no-print">
-                <h3 class="text-base font-bold text-lime-400 mb-3">ဒိုင်သို့ပို့ရန်စာရင်း (Pending)</h3>
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-base font-bold text-lime-400">ဒိုင်သို့ပို့ရန်စာရင်း</h3>
+                    <span class="text-xs text-slate-400 font-mono bg-slate-900 px-2 py-1 rounded">{{ bookieName() }}</span>
+                </div>
                 <div class="max-h-48 overflow-y-auto bg-slate-900 border border-slate-600 rounded p-2 text-sm font-mono mb-2">
                     <pre>{{ pendingSubmissions().join('\n') || 'စာရင်းမရှိသေးပါ' }}</pre>
                 </div>
