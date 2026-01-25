@@ -1112,6 +1112,12 @@ export class CodeAnalyzerComponent implements OnInit {
           newInputs = { ...newInputs, [currentAgent]: '' };
       }
 
+      // Clear individual limits if operating as a Bookie (Middle or Main)
+      let individualLimits = current[type].individualLimits;
+      if (currentMode === 'အလယ်ဒိုင်' || currentMode === 'ဒိုင်ကြီး') {
+          individualLimits = new Map<string, number>();
+      }
+
       return {
         ...current,
         [type]: {
@@ -1119,7 +1125,8 @@ export class CodeAnalyzerComponent implements OnInit {
           betHistory: retainedHistory,
           userInput: '',
           agentDrafts: newDrafts,
-          agentInputs: newInputs
+          agentInputs: newInputs,
+          individualLimits: individualLimits
         }
       };
     });
