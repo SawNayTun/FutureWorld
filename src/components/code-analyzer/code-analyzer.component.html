@@ -1,4 +1,5 @@
 
+
 <!-- Panic Mode Overlay -->
 @if (isPanicMode()) {
   <div class="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-center font-mono">
@@ -161,7 +162,12 @@
                     </button>
                 </div>
 
-                <div class="flex items-center gap-2"><label class="whitespace-nowrap w-28">ပေးရမည့် ကော်မရှင်:</label><input type="number" [ngModel]="commissionToPay()" (ngModelChange)="updateCurrentState('commissionToPay', +$event)" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 focus:ring-yellow-500"><span class="bg-slate-700 px-3 py-1.5 rounded-r-md">%</span></div>
+                <div class="flex items-center gap-2">
+                    <label class="whitespace-nowrap w-28">Direct ကော်မရှင်:</label>
+                    <input type="number" [ngModel]="commissionToPay()" (ngModelChange)="updateCurrentState('commissionToPay', +$event)" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 focus:ring-yellow-500"><span class="bg-slate-700 px-3 py-1.5 rounded-r-md">%</span>
+                    <span class="text-[10px] text-gray-500" title="စာရင်းထဲမရှိသော Direct Input များအတွက် ဤနှုန်းထားကို သုံးမည်။ Agent များအတွက် သတ်မှတ်ထားသော နှုန်းထားကို သုံးမည်။">🛈</span>
+                </div>
+                
                 @if(activeMode() === 'အလယ်ဒိုင်') {
                   <div class="flex items-center gap-2">
                     <label class="whitespace-nowrap w-28">ရမည့် ကော်မရှင်:</label>
@@ -430,17 +436,20 @@
                 }
                 
                 @if(activeMode() === 'အေးဂျင့်') {
-                  <app-summary-card title="ရမည့် ကော်မရှင်" [value]="agentCommissionEarned().toLocaleString('en-US', { minimumFractionDigits: 2 }) + ' ' + currencySymbol()" />
+                  <app-summary-card title="ရမည့် ကော်မရှင် (Profit)" [value]="agentCommissionEarned().toLocaleString('en-US', { minimumFractionDigits: 2 }) + ' ' + currencySymbol()" />
+                  <app-summary-card title="ဒိုင်သွင်းငွေ (Payable)" [value]="agentPayableToBookie().toLocaleString('en-US', { minimumFractionDigits: 2 }) + ' ' + currencySymbol()" color="text-red-300" />
                 }
 
-                <div class="col-span-2">
-                   <div class="bg-slate-900/70 p-3 rounded-lg">
-                      <p class="text-xs text-slate-400">အသားတင်</p>
-                      <p class="font-mono font-bold text-xl" [class]="netAmount() >= 0 ? 'text-green-400' : 'text-red-400'">
-                        {{ netAmount().toLocaleString('en-US', { minimumFractionDigits: 2 }) }} {{ currencySymbol() }}
-                      </p>
-                    </div>
-                </div>
+                @if(activeMode() !== 'အေးဂျင့်') {
+                  <div class="col-span-2">
+                     <div class="bg-slate-900/70 p-3 rounded-lg">
+                        <p class="text-xs text-slate-400">အသားတင် (Net)</p>
+                        <p class="font-mono font-bold text-xl" [class]="netAmount() >= 0 ? 'text-green-400' : 'text-red-400'">
+                          {{ netAmount().toLocaleString('en-US', { minimumFractionDigits: 2 }) }} {{ currencySymbol() }}
+                        </p>
+                      </div>
+                  </div>
+                }
             </div>
         </section>
 
