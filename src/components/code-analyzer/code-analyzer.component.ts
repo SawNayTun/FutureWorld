@@ -1,5 +1,5 @@
 
-import { Component, ChangeDetectionStrategy, signal, computed, effect, inject, ViewChild, ElementRef, OnInit, OnDestroy, WritableSignal } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal, computed, effect, ViewChild, ElementRef, OnInit, OnDestroy, WritableSignal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LicenseService } from '../../services/license.service';
 import { PersistenceService } from '../../services/persistence.service';
@@ -1791,7 +1791,10 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
             const commissionRate = agent.commission;
             const commissionAmount = totalSales * (commissionRate / 100);
             const netSales = totalSales - commissionAmount;
-            const finalBalance = netSales - payout; 
+            
+            // Critical Fix: Deduct Total Win Amount (Held + OverLimit) from Balance
+            // Agent gets paid for EVERYTHING accepted.
+            const finalBalance = netSales - totalWinAmount; 
 
             agentPayouts.push({
                 name: agent.name,
@@ -1837,7 +1840,9 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
         const commissionRate = 0; 
         const commissionAmount = 0;
         const netSales = totalSales;
-        const finalBalance = netSales - payout;
+        
+        // Critical Fix: Same for non-agents (Direct Input)
+        const finalBalance = netSales - totalWinAmount;
 
         otherPayouts.push({
              name: source,
