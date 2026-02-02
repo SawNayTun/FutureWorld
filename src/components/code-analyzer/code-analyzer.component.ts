@@ -1,4 +1,3 @@
-
 import { Component, ChangeDetectionStrategy, inject, signal, computed, effect, ViewChild, ElementRef, OnInit, OnDestroy, WritableSignal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LicenseService } from '../../services/license.service';
@@ -84,12 +83,17 @@ interface RiskAnalysis {
 
 interface AppState {
     betHistory: HistoryEntry[];
-    defaultLimit: number;
+    // Split limits for Middle and Main bookies
+    defaultLimitMain: number;
+    defaultLimitMiddle: number;
+    individualLimitsMain: Map<string, number>;
+    individualLimitsMiddle: Map<string, number>;
+    
     payoutRate: number;
     commissionToPay: number;
     commissionFromUpperBookie: number;
     agentCommissionFromBookie: number;
-    individualLimits: Map<string, number>;
+    
     myAgentName: string;
     agentProfiles: string[];
     myMiddleBookieName: string;
@@ -148,6 +152,7 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
   isPanicMode = signal(false);
   panicInput = signal('');
   showVoucherSettings = signal(false);
+  showCustomLimitsDropdown = signal(false);
   
   // Realtime Session Timer
   private sessionTimer: any;
@@ -245,12 +250,25 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
 
   // --- Proxy Computed Signals for Active State ---
   betHistory = computed(() => this.appState()[this.lotteryType()].betHistory);
-  defaultLimit = computed(() => this.appState()[this.lotteryType()].defaultLimit);
+  
+  // Updated Computed: Return correct default limit based on mode
+  defaultLimit = computed(() => {
+      const state = this.appState()[this.lotteryType()];
+      if (this.activeMode() === 'အလယ်ဒိုင်') return state.defaultLimitMiddle;
+      return state.defaultLimitMain;
+  });
+
   payoutRate = computed(() => this.appState()[this.lotteryType()].payoutRate);
   commissionToPay = computed(() => this.appState()[this.lotteryType()].commissionToPay);
   commissionFromUpperBookie = computed(() => this.appState()[this.lotteryType()].commissionFromUpperBookie);
   agentCommissionFromBookie = computed(() => this.appState()[this.lotteryType()].agentCommissionFromBookie);
-  individualLimits = computed(() => this.appState()[this.lotteryType()].individualLimits);
+  
+  // Updated Computed: Return correct limits map based on mode
+  individualLimits = computed(() => {
+      const state = this.appState()[this.lotteryType()];
+      if (this.activeMode() === 'အလယ်ဒိုင်') return state.individualLimitsMiddle;
+      return state.individualLimitsMain;
+  });
   
   bookieName = computed(() => {
       const state = this.appState()[this.lotteryType()];
@@ -325,20 +343,23 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
     const cells: GridCell[] = [];
     const currentIndLimits = this.individualLimits();
     const currentDefLimit = this.defaultLimit();
+    const isAgent = this.activeMode() === 'အေးဂျင့်';
 
     for (let i = 0; i < 100; i++) {
       const numberStr = i.toString().padStart(2, '0');
       const breakdown = data.get(numberStr) || [];
       const amount = breakdown.reduce((sum, bet) => sum + bet.amount, 0);
       
-      const hasCustomLimit = (this.activeMode() === 'ဒိုင်ကြီး' || this.activeMode() === 'အလယ်ဒိုင်') && currentIndLimits.has(numberStr);
+      // Agents don't have custom limits logic in this view
+      const hasCustomLimit = !isAgent && currentIndLimits.has(numberStr);
       const limit = hasCustomLimit ? currentIndLimits.get(numberStr)! : currentDefLimit;
       
-      const isOverLimit = amount > limit;
+      // Agents should NEVER be 'over limit' in their view (unless we implement specific agent limits later)
+      const isOverLimit = !isAgent && amount > limit;
       const overLimitAmount = isOverLimit ? amount - limit : 0;
 
       const amounts = breakdown.map(b => b.amount);
-      const betsString = amounts.length > 0 ? (this.activeMode() === 'အေးဂျင့်' ? amounts.join(', ') : `(${amounts.join(', ')})`) : '';
+      const betsString = amounts.length > 0 ? (isAgent ? amounts.join(', ') : `(${amounts.join(', ')})`) : '';
       const betsTooltip = breakdown.map(b => `${b.source}: ${b.amount}`).join('; ');
 
       cells.push({ number: numberStr, amount, isOverLimit, hasCustomLimit, breakdown, betsString, betsTooltip, overLimitAmount, limit });
@@ -353,15 +374,16 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
       const items: GridCell[] = [];
       const currentIndLimits = this.individualLimits();
       const currentDefLimit = this.defaultLimit();
+      const isAgent = this.activeMode() === 'အေးဂျင့်';
 
       for (const [numberStr, breakdown] of data.entries()) {
           const amount = breakdown.reduce((sum, bet) => sum + bet.amount, 0);
           if (amount === 0) continue;
           
-          const hasCustomLimit = (this.activeMode() === 'ဒိုင်ကြီး' || this.activeMode() === 'အလယ်ဒိုင်') && currentIndLimits.has(numberStr);
+          const hasCustomLimit = !isAgent && currentIndLimits.has(numberStr);
           const limit = hasCustomLimit ? currentIndLimits.get(numberStr)! : currentDefLimit;
 
-          const isOverLimit = amount > limit;
+          const isOverLimit = !isAgent && amount > limit;
           const overLimitAmount = isOverLimit ? amount - limit : 0;
           const amounts = breakdown.map(b => b.amount);
           const betsString = amounts.length > 0 ? `(${amounts.join(', ')})` : '';
@@ -808,14 +830,20 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
   private createInitialState(type: LotteryType): AppState {
     const today = new Date().toISOString().split('T')[0];
     const defaultName = type === '2D' ? 'My 2D' : 'My 3D';
+    const defLimit = type === '2D' ? 50000 : 500000;
+    
     return {
       betHistory: [],
-      defaultLimit: type === '2D' ? 50000 : 500000,
+      // Initialize both limits
+      defaultLimitMain: defLimit,
+      defaultLimitMiddle: defLimit,
+      individualLimitsMain: new Map<string, number>(),
+      individualLimitsMiddle: new Map<string, number>(),
+      
       payoutRate: type === '2D' ? 80 : 500,
       commissionToPay: 10,
       commissionFromUpperBookie: 10,
       agentCommissionFromBookie: 10,
-      individualLimits: new Map<string, number>(),
       myAgentName: defaultName + ' Agent',
       agentProfiles: [defaultName + ' Agent'],
       myMiddleBookieName: defaultName + ' Middle',
@@ -852,10 +880,29 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
         profiles = [...profiles, myAgentName];
     }
     
+    // Migration Logic: If stored data is from old version, migrate generic limits to specific limits
+    // Default to Main Bookie limits if ambiguous, or duplicate to both to be safe.
+    let individualLimitsMain = stored.individualLimitsMain ? new Map<string, number>(stored.individualLimitsMain) : new Map<string, number>();
+    let individualLimitsMiddle = stored.individualLimitsMiddle ? new Map<string, number>(stored.individualLimitsMiddle) : new Map<string, number>();
+    
+    // Legacy migration
+    if ((stored as any).individualLimits) {
+        const legacyLimits = new Map((stored as any).individualLimits);
+        // If specific limits are empty, populate them with legacy data
+        if (individualLimitsMain.size === 0) individualLimitsMain = new Map(legacyLimits) as Map<string, number>;
+        if (individualLimitsMiddle.size === 0) individualLimitsMiddle = new Map(legacyLimits) as Map<string, number>;
+    }
+
+    let defaultLimitMain = stored.defaultLimitMain ?? (stored as any).defaultLimit ?? initial.defaultLimitMain;
+    let defaultLimitMiddle = stored.defaultLimitMiddle ?? (stored as any).defaultLimit ?? initial.defaultLimitMiddle;
+
     return {
       ...initial,
       ...stored,
-      individualLimits: new Map(stored.individualLimits),
+      individualLimitsMain,
+      individualLimitsMiddle,
+      defaultLimitMain,
+      defaultLimitMiddle,
       myAgentName,
       myMiddleBookieName,
       myMainBookieName,
@@ -877,6 +924,20 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
           [key]: value
         }
       }));
+  }
+  
+  updateDefaultLimit(val: number) {
+      const type = this.lotteryType();
+      const mode = this.activeMode();
+      this.appState.update(current => {
+          const newState = { ...current[type] };
+          if (mode === 'အလယ်ဒိုင်') {
+              newState.defaultLimitMiddle = val;
+          } else {
+              newState.defaultLimitMain = val;
+          }
+          return { ...current, [type]: newState };
+      });
   }
 
   updateBookieName(name: string) {
@@ -1202,9 +1263,14 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
       }
 
       // Clear individual limits if operating as a Bookie (Middle or Main)
-      let individualLimits = current[type].individualLimits;
-      if (currentMode === 'အလယ်ဒိုင်' || currentMode === 'ဒိုင်ကြီး') {
-          individualLimits = new Map<string, number>();
+      // FIX: Only clear the limits relevant to the active mode
+      let individualLimitsMain = current[type].individualLimitsMain;
+      let individualLimitsMiddle = current[type].individualLimitsMiddle;
+      
+      if (currentMode === 'အလယ်ဒိုင်') {
+          individualLimitsMiddle = new Map<string, number>();
+      } else if (currentMode === 'ဒိုင်ကြီး') {
+          individualLimitsMain = new Map<string, number>();
       }
 
       return {
@@ -1215,7 +1281,8 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
           userInput: '',
           agentDrafts: newDrafts,
           agentInputs: newInputs,
-          individualLimits: individualLimits
+          individualLimitsMain,
+          individualLimitsMiddle
         }
       };
     });
@@ -1377,6 +1444,7 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
   // --- Limit Management ---
   openLimitModal(number: string | null = null) {
     if (this.activeMode() === 'အေးဂျင့်') return;
+    this.showCustomLimitsDropdown.set(false); // Close dropdown if opening modal
     this.limitManageNumber.set(number || '');
     const currentLimit = number ? (this.individualLimits().get(number) || this.defaultLimit()) : this.defaultLimit();
     this.limitManageAmount.set(currentLimit);
@@ -1384,52 +1452,98 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
   }
 
   saveIndividualLimit() {
-    const number = this.limitManageNumber().trim();
+    const inputRaw = this.limitManageNumber().trim();
     const limit = this.limitManageAmount();
+    const mode = this.activeMode();
+    const type = this.lotteryType();
     
-    if (number && !isNaN(limit) && limit >= 0) {
-      const type = this.lotteryType();
-      this.appState.update(current => {
-        const newLimits = new Map(current[type].individualLimits);
-        newLimits.set(number, limit);
-        return {
-          ...current,
-          [type]: {
-            ...current[type],
-            individualLimits: newLimits
-          }
-        };
-      });
-      if (!this.limitManageNumber()) {
-          this.limitManageNumber.set('');
-          this.limitManageAmount.set(this.defaultLimit());
-          this.statusMessage.set('လစ်မစ်သတ်မှတ်ပြီးပါပြီ။');
-          setTimeout(() => this.statusMessage.set(''), 2000);
-      } else {
-        this.showLimitManagementModal.set(false);
-      }
-    } else {
-        this.statusMessage.set('ကျေးဇူးပြု၍ ဂဏန်းနှင့် ပမာဏကို မှန်ကန်စွာထည့်ပါ။');
-        setTimeout(() => this.statusMessage.set(''), 3000);
+    if (limit < 0 || isNaN(limit)) {
+         this.statusMessage.set('ပမာဏ မမှန်ကန်ပါ။');
+         return;
     }
+
+    // Case 1: Default Limit (Input is empty)
+    if (!inputRaw) {
+        this.appState.update(current => {
+            const newState = { ...current[type] };
+            if (mode === 'အလယ်ဒိုင်') {
+                newState.defaultLimitMiddle = limit;
+            } else {
+                newState.defaultLimitMain = limit;
+            }
+            return { ...current, [type]: newState };
+        });
+        
+        this.limitManageNumber.set('');
+        this.limitManageAmount.set(limit); // Update UI to reflect new default
+        this.statusMessage.set('Default လစ်မစ်သတ်မှတ်ပြီးပါပြီ။');
+        setTimeout(() => this.statusMessage.set(''), 2000);
+        return;
+    }
+
+    // Case 2: Individual/Batch Limit via Parsing Service
+    // We parse the input string (e.g. "1t", "apu", "12") with a dummy amount "1"
+    // The parser returns all numbers associated with that term.
+    const parsedTargets = this.betParsingService.parseRaw(`${inputRaw} 1`, type);
+
+    if (parsedTargets.length === 0) {
+         this.statusMessage.set('ဂဏန်း သို့မဟုတ် အခေါ်အဝေါ် မှားယွင်းနေပါသည်။');
+         setTimeout(() => this.statusMessage.set(''), 3000);
+         return;
+    }
+
+    this.appState.update(current => {
+        const currentState = current[type];
+        let newLimits: Map<string, number>;
+
+        if (mode === 'အလယ်ဒိုင်') {
+            newLimits = new Map(currentState.individualLimitsMiddle);
+        } else {
+            newLimits = new Map(currentState.individualLimitsMain);
+        }
+
+        // Apply limit to ALL expanded numbers
+        parsedTargets.forEach(target => {
+            newLimits.set(target.number, limit);
+        });
+
+        const newState = { ...currentState };
+        if (mode === 'အလယ်ဒိုင်') newState.individualLimitsMiddle = newLimits;
+        else newState.individualLimitsMain = newLimits;
+
+        return { ...current, [type]: newState };
+    });
+
+    this.showLimitManagementModal.set(false);
+    this.limitManageNumber.set('');
+    this.statusMessage.set(`${parsedTargets.length} ကွက်အတွက် လစ်မစ်သတ်မှတ်ပြီးပါပြီ။`);
+    setTimeout(() => this.statusMessage.set(''), 3000);
   }
 
   removeIndividualLimit(number: string) {
       const type = this.lotteryType();
+      const mode = this.activeMode();
       this.appState.update(current => {
-        const newLimits = new Map(current[type].individualLimits);
-        newLimits.delete(number);
-        return {
-          ...current,
-          [type]: {
-            ...current[type],
-            individualLimits: newLimits
-          }
-        };
+        const currentState = current[type];
+        let newLimits: Map<string, number>;
+        
+        if (mode === 'အလယ်ဒိုင်') {
+            newLimits = new Map(currentState.individualLimitsMiddle);
+            newLimits.delete(number);
+            return { ...current, [type]: { ...currentState, individualLimitsMiddle: newLimits } };
+        } else {
+            newLimits = new Map(currentState.individualLimitsMain);
+            newLimits.delete(number);
+            return { ...current, [type]: { ...currentState, individualLimitsMain: newLimits } };
+        }
       });
       if (this.limitManageNumber() === number) {
           this.showLimitManagementModal.set(false);
       }
+  }
+  
+  toggleCustomLimitsDropdown() {
+      this.showCustomLimitsDropdown.update(v => !v);
   }
 
   closeLimitModal() {
@@ -1895,6 +2009,10 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
              return entryMode === currentMode;
         });
 
+        // Use appropriate limits for report snapshot
+        let reportDefaultLimit = this.defaultLimit();
+        let reportIndividualLimits: [string, number][] = Array.from(this.individualLimits().entries());
+
         const report: Report = {
             id: `report_${new Date().toISOString()}_${this.activeMode()}_${type === '2D' ? this.session() : this.drawDate()}_${type}`,
             lotteryType: type,
@@ -1915,12 +2033,12 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
             }),
             betHistory: filteredHistory.map(h => h.input),
             bookieName: this.bookieName(),
-            defaultLimit: this.defaultLimit(),
+            defaultLimit: reportDefaultLimit,
             payoutRate: this.payoutRate(),
             commissionToPay: this.commissionToPay(),
             agentCommissionFromBookie: this.agentCommissionFromBookie(),
             commissionFromUpperBookie: this.commissionFromUpperBookie(),
-            individualLimits: Array.from(this.individualLimits().entries()),
+            individualLimits: reportIndividualLimits,
             upperBookies: this.upperBookies(),
             agents: this.agents(),
             currencySymbol: this.currencySymbol(),
@@ -1995,25 +2113,37 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
         }
     }
 
-    this.appState.update(current => ({
-        ...current,
-        [type]: {
-            ...current[type],
-            betHistory: restoredHistory,
-            defaultLimit: report.defaultLimit,
-            individualLimits: new Map(report.individualLimits),
-            payoutRate: report.payoutRate,
-            commissionToPay: report.commissionToPay,
-            commissionFromUpperBookie: report.commissionFromUpperBookie,
-            agentCommissionFromBookie: report.agentCommissionFromBookie,
-            session: report.session || current[type].session,
-            drawDate: report.drawDate || current[type].drawDate,
-            // Restore bookie name based on targetMode to ensure context consistency
-            myAgentName: targetMode === 'အေးဂျင့်' ? report.bookieName : current[type].myAgentName,
-            myMiddleBookieName: targetMode === 'အလယ်ဒိုင်' ? report.bookieName : current[type].myMiddleBookieName,
-            myMainBookieName: targetMode === 'ဒိုင်ကြီး' ? report.bookieName : current[type].myMainBookieName,
+    this.appState.update(current => {
+        // Restore Limits carefully. If restored report is Middle, update Middle limits.
+        const newState = { ...current[type] };
+        
+        if (targetMode === 'အလယ်ဒိုင်') {
+            newState.defaultLimitMiddle = report.defaultLimit;
+            newState.individualLimitsMiddle = new Map(report.individualLimits);
+            newState.myMiddleBookieName = report.bookieName;
+        } else if (targetMode === 'ဒိုင်ကြီး') {
+            newState.defaultLimitMain = report.defaultLimit;
+            newState.individualLimitsMain = new Map(report.individualLimits);
+            newState.myMainBookieName = report.bookieName;
+        } else {
+            // Agent
+            newState.myAgentName = report.bookieName;
         }
-    }));
+
+        return {
+            ...current,
+            [type]: {
+                ...newState,
+                betHistory: restoredHistory,
+                payoutRate: report.payoutRate,
+                commissionToPay: report.commissionToPay,
+                commissionFromUpperBookie: report.commissionFromUpperBookie,
+                agentCommissionFromBookie: report.agentCommissionFromBookie,
+                session: report.session || current[type].session,
+                drawDate: report.drawDate || current[type].drawDate,
+            }
+        };
+    });
 
     this.showReports.set(false);
     
@@ -2196,8 +2326,10 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
     const suggestion = this.profitOptimizerSuggestion();
     if (!suggestion) return;
   
-    const newLimit = this.defaultLimit() + suggestion.suggestedHoldingIncrease;
-    this.updateCurrentState('defaultLimit', newLimit);
+    // Update the correct limit based on mode
+    const currentLimit = this.defaultLimit();
+    const newLimit = currentLimit + suggestion.suggestedHoldingIncrease;
+    this.updateDefaultLimit(newLimit);
   
     this.suggestionAppliedRecently.set(true);
     this.statusMessage.set('Default Limit ကို အကြံပြုချက်အတိုင်း အောင်မြင်စွာ ပြင်ဆင်ပြီးပါပြီ။');

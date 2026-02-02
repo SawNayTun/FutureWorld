@@ -37,45 +37,93 @@ export class BetParsingService {
   }
 
   private coreParse(input: string, lotteryType: '2D' | '3D', addBetCallback: (n: string, a: number) => void): void {
-    const rawLines = input.split(/\r?\n/);
-    const cleanedLines = rawLines.filter(line => {
-      const trimmed = line.trim();
-      if (!trimmed) return false;
-      // Filter out obvious metadata lines, but rely on token skipping for inline headers
-      if (/^(agent|session|sub-total|total|နေ့စွဲ|date)/i.test(trimmed)) return false;
-      if (trimmed.includes('စုစုပေါင်း')) return false; 
-      if (/^total\s*:/i.test(trimmed)) return false;
-      return true;
-    });
+    const rawLines = input.split(/\r?\n/).filter(l => l.trim());
+    const standardProcessingBuffer: string[] = [];
 
-    let processedInput = cleanedLines.join('\n');
+    for (let line of rawLines) {
+        const trimmed = line.trim();
+        // Filter out obvious metadata lines
+        if (/^(agent|session|sub-total|total|နေ့စွဲ|date)/i.test(trimmed)) continue;
+        if (trimmed.includes('စုစုပေါင်း') || /^total\s*:/i.test(trimmed)) continue;
 
-    // --- Burmese replacements ---
-    const burmeseToEnglishMap: { [key: string]: string } = { 'အပူး': 'apu', 'ညီကို': 'nk', 'ပါဝါ': 'pao', 'နက်ခတ်': 'nat', 'စုံစုံ': 'ss', 'မမ': 'mm', 'စုံမ': 'sm', 'မစုံ': 'ms', 'ဆယ်ပြည့်': 'sp', 'အကုန်': 'all', 'ဘူဘဒိတ်': 'bb', 'ထိပ်': 't', 'ပိတ်': 'p', 'အပါ': 'a', 'ခွေ': 'k', 'ဗြိတ်': 'v', 'ဘဒိတ်': 'b', 'အကပ်': 'ak', 'ပတ်လည်': 'palei' };
-    for (const burmese of Object.keys(burmeseToEnglishMap)) {
-        processedInput = processedInput.replace(new RegExp(burmese, 'g'), burmeseToEnglishMap[burmese]);
+        // 1. Pre-process specific Burmese chars (Digits & Keywords) but KEEP delimiters like '='
+        const processedLine = this.preProcessBurmese(trimmed);
+        
+        let handled = false;
+
+        // --- FEATURE 1: Batch Equal Syntax (e.g., 11 12 13 = 100) ---
+        const equalMatch = processedLine.match(/^(.+?)\s*=\s*(\d+(?:k)?)$/i);
+        if (equalMatch) {
+            const numbersPart = equalMatch[1];
+            const amount = this.parseAmount(equalMatch[2]);
+            
+            if (!isNaN(amount)) {
+                // Clean separators only in the numbers part
+                const cleanedNumbers = numbersPart.replace(/[=/၊,*\-_]/g, ' ');
+                const tokens = cleanedNumbers.split(/\s+/).filter(t => t);
+                
+                tokens.forEach(token => {
+                    this.processKey(token, amount, lotteryType, addBetCallback);
+                });
+                handled = true;
+            }
+        }
+
+        // --- FEATURE 2: Batch Mixed R Syntax (e.g., 54 87 ... 12r3) ---
+        // Logic: 54 87 12r3 => 54 gets 12, 45 gets 3; 87 gets 12, 78 gets 3.
+        if (!handled && lotteryType === '2D') {
+             const mixedRMatch = processedLine.match(/^(.+?)\s+(\d+(?:k)?)r(\d+(?:k)?)$/i);
+             if (mixedRMatch) {
+                 const numbersPart = mixedRMatch[1];
+                 const directAmt = this.parseAmount(mixedRMatch[2]);
+                 const reverseAmt = this.parseAmount(mixedRMatch[3]);
+
+                 if (!isNaN(directAmt) && !isNaN(reverseAmt)) {
+                     const cleanedNumbers = numbersPart.replace(/[=/၊,*\-_]/g, ' ');
+                     const tokens = cleanedNumbers.split(/\s+/).filter(t => t);
+                     
+                     tokens.forEach(token => {
+                         // We use processKey with a dummy amount to "expand" keywords (e.g. 'apu') into numbers
+                         this.processKey(token, 0, lotteryType, (n, _) => {
+                             // Apply Direct Amount
+                             addBetCallback(n, directAmt);
+                             
+                             // Apply Reverse Amount logic
+                             const rev = n.split('').reverse().join('');
+                             // Only apply reverse if it's a different number (not pairs like 55)
+                             if (rev !== n) {
+                                 addBetCallback(rev, reverseAmt);
+                             }
+                         });
+                     });
+                     handled = true;
+                 }
+             }
+        }
+
+        if (!handled) {
+            standardProcessingBuffer.push(processedLine);
+        }
     }
-    const burmeseDigits = ['၀', '၁', '၂', '၃', '၄', '၅', '၆', '၇', '၈', '၉'];
-    burmeseDigits.forEach((digit, index) => {
-        processedInput = processedInput.replace(new RegExp(digit, 'g'), index.toString());
-    });
+
+    // Process remaining lines with standard logic
+    let remainingInput = standardProcessingBuffer.join('\n');
     
-    // --- Global Cleaning ---
-    // 1. Replace specific currency symbols with space
-    processedInput = processedInput.replace(/[¥$£€]/g, ' ');
+    // Global cleaning for standard processing (remove special chars)
+    remainingInput = remainingInput.replace(/[=/၊,*\-_:]/g, ' ');
+    remainingInput = remainingInput.replace(/[¥$£€]/g, ' ');
 
-    // 2. Normalize separators
-    processedInput = processedInput.replace(/[=/၊,*\-_:]/g, ' ');
+    // --- Standard Logic from here ---
 
-    // --- FEATURE 1: Bulk R Logic ---
+    // Bulk R Logic: "12 34 56 r 100" -> "12r 100 34r 100..."
     if (lotteryType === '2D') {
-        processedInput = processedInput.replace(/((?:\b\d{2}\s+)+)r\s+(\d+(?:k)?)\b/gi, (match, numbersPart, amountPart) => {
+        remainingInput = remainingInput.replace(/((?:\b\d{2}\s+)+)r\s+(\d+(?:k)?)\b/gi, (match, numbersPart, amountPart) => {
             const numbers = numbersPart.trim().split(/\s+/);
             return numbers.map((n: string) => `${n}r ${amountPart}`).join(' ');
         });
     }
 
-    const entries = processedInput.split(/\s+/).map(s => s.trim()).filter(Boolean);
+    const entries = remainingInput.split(/\s+/).map(s => s.trim()).filter(Boolean);
 
     let i = 0;
     while (i < entries.length) {
@@ -83,7 +131,7 @@ export class BetParsingService {
             const potentialKey = entries[i].toLowerCase();
             const amountStr = entries[i+1];
             
-            // --- FEATURE 2: Inline Mixed Amounts (e.g., 3r2) ---
+            // Inline Mixed Amounts (e.g., 3r2 => 3 gets direct, reverse gets 2) - Standard positional
             if (lotteryType === '2D' && /^\d+(?:k)?r\d+(?:k)?$/i.test(amountStr)) {
                 const [directAmtStr, reverseAmtStr] = amountStr.toLowerCase().split('r');
                 const directAmount = this.parseAmount(directAmtStr);
@@ -93,7 +141,9 @@ export class BetParsingService {
                     if (/^\d{2}$/.test(potentialKey)) {
                         addBetCallback(potentialKey, directAmount);
                         const reversedKey = potentialKey.split('').reverse().join('');
-                        addBetCallback(reversedKey, reverseAmount);
+                        if (reversedKey !== potentialKey) {
+                            addBetCallback(reversedKey, reverseAmount);
+                        }
                         i += 2;
                         continue;
                     }
@@ -112,6 +162,24 @@ export class BetParsingService {
         }
         i++;
     }
+  }
+
+  private preProcessBurmese(input: string): string {
+    let processed = input;
+    
+    // Mapping
+    const burmeseToEnglishMap: { [key: string]: string } = { 'အပူး': 'apu', 'ညီကို': 'nk', 'ပါဝါ': 'pao', 'နက်ခတ်': 'nat', 'စုံစုံ': 'ss', 'မမ': 'mm', 'စုံမ': 'sm', 'မစုံ': 'ms', 'ဆယ်ပြည့်': 'sp', 'အကုန်': 'all', 'ဘူဘဒိတ်': 'bb', 'ထိပ်': 't', 'ပိတ်': 'p', 'အပါ': 'a', 'ခွေ': 'k', 'ဗြိတ်': 'v', 'ဘဒိတ်': 'b', 'အကပ်': 'ak', 'ပတ်လည်': 'palei' };
+    
+    for (const burmese of Object.keys(burmeseToEnglishMap)) {
+        processed = processed.replace(new RegExp(burmese, 'g'), burmeseToEnglishMap[burmese]);
+    }
+    
+    const burmeseDigits = ['၀', '၁', '၂', '၃', '၄', '၅', '၆', '၇', '၈', '၉'];
+    burmeseDigits.forEach((digit, index) => {
+        processed = processed.replace(new RegExp(digit, 'g'), index.toString());
+    });
+
+    return processed;
   }
 
   private parseAmount(amountStr: string): number {

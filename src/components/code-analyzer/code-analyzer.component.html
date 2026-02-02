@@ -153,13 +153,39 @@
                 <div class="flex items-center gap-2"><label class="whitespace-nowrap w-28">ဇတိုး:</label><input type="number" [ngModel]="payoutRate()" (ngModelChange)="updateCurrentState('payoutRate', +$event)" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 focus:ring-yellow-500"></div>
                 <div class="flex items-center gap-2">
                     <label class="whitespace-nowrap w-28">Default လစ်မစ်:</label>
-                    <input type="number" [ngModel]="defaultLimit()" (ngModelChange)="updateCurrentState('defaultLimit', +$event)" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 focus:ring-yellow-500">
+                    <input type="number" [ngModel]="defaultLimit()" (ngModelChange)="updateDefaultLimit(+$event)" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 focus:ring-yellow-500">
                 </div>
-                <!-- Manage Limits Button -->
-                <div class="flex items-center justify-end">
-                    <button (click)="openLimitModal()" class="bg-blue-600/80 hover:bg-blue-700 text-white text-xs font-bold py-1.5 px-3 rounded transition">
+                <!-- Manage Limits Dropdown -->
+                <div class="flex items-center justify-end relative">
+                    <button (click)="toggleCustomLimitsDropdown()" class="bg-blue-600/80 hover:bg-blue-700 text-white text-xs font-bold py-1.5 px-3 rounded transition flex items-center gap-1">
                         သီးသန့်လစ်မစ်များ ({{ customLimitsList().length }})
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
                     </button>
+                    
+                    @if (showCustomLimitsDropdown()) {
+                        <div class="absolute top-full right-0 mt-2 w-64 bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-50 overflow-hidden">
+                            <div class="p-2 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
+                                <span class="text-xs font-bold text-slate-300">သီးသန့်လစ်မစ် စာရင်း</span>
+                                <button (click)="openLimitModal()" class="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded">+ အသစ်ထည့်</button>
+                            </div>
+                            <div class="max-h-60 overflow-y-auto">
+                                @for (item of customLimitsList(); track item.number) {
+                                    <div class="flex justify-between items-center p-2 border-b border-slate-700/50 hover:bg-slate-700/30 text-xs">
+                                        <div class="font-mono">
+                                            <span class="font-bold text-blue-400 mr-2">{{ item.number }}</span>
+                                            <span class="text-slate-400">=</span>
+                                            <span class="text-white ml-2">{{ item.limit.toLocaleString() }}</span>
+                                        </div>
+                                        <button (click)="removeIndividualLimit(item.number)" class="text-red-400 hover:text-red-300 p-1 rounded hover:bg-slate-700">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                                        </button>
+                                    </div>
+                                } @empty {
+                                    <div class="p-4 text-center text-xs text-slate-500">သီးသန့်လစ်မစ် မရှိသေးပါ</div>
+                                }
+                            </div>
+                        </div>
+                    }
                 </div>
 
                 <div class="flex items-center gap-2">
