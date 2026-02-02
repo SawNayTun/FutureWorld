@@ -2319,7 +2319,12 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
   
   formatDate(isoString: string): string {
     if (!isoString) return '';
-    return new Date(isoString).toLocaleDateString('en-CA');
+    try {
+        const d = new Date(isoString);
+        return isNaN(d.getTime()) ? isoString : d.toLocaleDateString('en-CA');
+    } catch {
+        return isoString;
+    }
   }
 
   applyProfitSuggestion(): void {
@@ -2351,7 +2356,8 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
       const header = `--- ${this.bookieName()} ---`;
       
       const today = new Date().toLocaleDateString('en-CA');
-      let dateLine = `နေ့စွဲ: ${today}`;
+      let dateLine = `နေ့စွဲ: ${this.lotteryType() === '3D' ? this.formatDate(this.drawDate()) : today}`;
+      
       if (this.lotteryType() === '2D') {
           const sessionText = this.session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း';
           dateLine += ` (${sessionText})`;
