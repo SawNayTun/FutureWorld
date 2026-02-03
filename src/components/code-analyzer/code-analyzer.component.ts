@@ -7,6 +7,7 @@ import { VoiceRecognitionService } from '../../services/voice-recognition.servic
 import { ReportViewerComponent } from '../report-viewer/report-viewer.component';
 import { UserGuideComponent } from '../user-guide/user-guide.component';
 import { ForwardingModalComponent, Assignments } from '../forwarding-modal/forwarding-modal.component';
+import { ChatComponent } from '../chat/chat.component';
 import { Agent, UpperBookie, Report, GridCell, BetDetail, VoucherSettings } from '../../models/app.models';
 import { SummaryCardComponent } from '../summary-card/summary-card.component';
 
@@ -111,7 +112,7 @@ interface AppState {
   templateUrl: './code-analyzer.component.html',
   styleUrls: ['./code-analyzer.component.css'],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, ReportViewerComponent, UserGuideComponent, ForwardingModalComponent, SummaryCardComponent],
+  imports: [FormsModule, ReportViewerComponent, UserGuideComponent, ForwardingModalComponent, SummaryCardComponent, ChatComponent],
   host: {
     '(window:keydown)': 'handleKeyboardEvents($event)',
     '(window:beforeunload)': 'onBeforeUnload($event)'
@@ -153,6 +154,7 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
   panicInput = signal('');
   showVoucherSettings = signal(false);
   showCustomLimitsDropdown = signal(false);
+  showChat = signal(false);
   
   // Realtime Session Timer
   private sessionTimer: any;
@@ -1063,7 +1065,7 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
        }
     }
 
-    if (this.showReports() || this.showUserGuide() || this.showSubmissionModal() || this.showPayoutModal() || this.showBetDetailModal() || this.isForwardingModalOpen() || this.showLimitManagementModal() || this.showVoucherSettings() || this.showRiskModal()) return;
+    if (this.showReports() || this.showUserGuide() || this.showSubmissionModal() || this.showPayoutModal() || this.showBetDetailModal() || this.isForwardingModalOpen() || this.showLimitManagementModal() || this.showVoucherSettings() || this.showRiskModal() || this.showChat()) return;
     
     const target = event.target as HTMLElement;
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) && target.id !== 'main-bet-input') return;
@@ -1170,6 +1172,35 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
   }
   toggleReports(): void { this.showReports.update(v => !v); }
   toggleHeatmap(): void { this.showHeatmap.update(v => !v); }
+  toggleChat(): void { this.showChat.update(v => !v); }
+
+  handleChatImport(data: {text: string, agentName: string}) {
+      const mode = this.activeMode();
+      
+      // Auto-register agent if not exists (for bookies)
+      if (mode === 'အလယ်ဒိုင်' || mode === 'ဒိုင်ကြီး') {
+          const currentAgentList = this.agents();
+          if (!currentAgentList.some(a => a.name === data.agentName)) {
+              if (mode === 'အလယ်ဒိုင်') {
+                  this.middleBookieAgents.update(a => [...a, { name: data.agentName, commission: 5 }]);
+              } else {
+                  this.mainBookieAgents.update(a => [...a, { name: data.agentName, commission: 5 }]);
+              }
+              this.statusMessage.set(`အေးဂျင့် '${data.agentName}' ကို အလိုအလျောက် စာရင်းသွင်းလိုက်သည်။`);
+          }
+      }
+
+      const bets = this.betParsingService.parseRaw(data.text, this.lotteryType());
+      if (bets.length > 0) {
+          if(this.addBetsToHistory(data.text, data.agentName)) {
+              this.statusMessage.set(`'${data.agentName}' ထံမှ စာရင်းများကို ဇယားသွင်းပြီးပါပြီ။`);
+              this.showChat.set(false); // Optionally close chat
+          }
+      } else {
+          this.statusMessage.set('ထည့်သွင်းရန် စာရင်းမှန်ကန်မှုမရှိပါ။');
+      }
+      setTimeout(() => this.statusMessage.set(''), 3000);
+  }
 
   addBetsFromInput(): void {
     const input = this.userInput().trim();

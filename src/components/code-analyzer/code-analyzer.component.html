@@ -70,6 +70,12 @@
         <input type="file" #fileInput (change)="handleRestore($event)" hidden accept=".json">
         <button (click)="fileInput.click()" title="Restore (Alt + R)" class="bg-teal-600/80 hover:bg-teal-700 text-white text-sm font-bold py-1 px-3 rounded transition">Restore</button>
         <button (click)="toggleReports()" class="bg-blue-600/80 hover:bg-blue-700 text-white text-sm font-bold py-1 px-3 rounded transition">မှတ်တမ်းများ</button>
+        
+        <!-- Chat Button -->
+        <button (click)="toggleChat()" class="bg-indigo-600/80 hover:bg-indigo-700 text-white p-1.5 rounded transition" title="Helper Connect">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+        </button>
+
         <button (click)="logout()" class="bg-red-600/80 hover:bg-red-700 text-white text-sm font-bold py-1 px-3 rounded transition">ထွက်ရန်</button>
       </div>
   </header>
@@ -603,6 +609,11 @@
 <!-- ========================================== -->
 <!-- MODALS / POPUPS SECTION (MUST BE AT BOTTOM) -->
 <!-- ========================================== -->
+
+<!-- Chat Modal -->
+@if (showChat()) {
+    <app-chat (close)="showChat.set(false)" (importBets)="handleChatImport($event)" />
+}
 
 <!-- Clear Confirmation Modal -->
 @if (showClearAllConfirmation()) {
