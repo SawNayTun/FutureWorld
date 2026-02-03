@@ -236,6 +236,7 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
   showLimitManagementModal = signal(false);
   limitManageNumber = signal('');
   limitManageAmount = signal<number>(0);
+  batchLimitAmount = signal<number>(0); // For batch modification
 
   // --- Messaging State ---
   confirmationMessage = signal('');
@@ -1516,10 +1517,17 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
 
     this.showLimitManagementModal.set(false);
     this.limitManageNumber.set('');
-    this.statusMessage.set(`${parsedTargets.length} ကွက်အတွက် လစ်မစ်သတ်မှတ်ပြီးပါပြီ။`);
+    
+    // Feedback based on count
+    if (parsedTargets.length > 1) {
+        this.statusMessage.set(`${inputRaw} အတွက် ${parsedTargets.length} ကွက်လုံးကို လစ်မစ်သတ်မှတ်ပြီးပါပြီ။`);
+    } else {
+        this.statusMessage.set(`ဂဏန်း ${parsedTargets[0].number} အတွက် လစ်မစ်သတ်မှတ်ပြီးပါပြီ။`);
+    }
     setTimeout(() => this.statusMessage.set(''), 3000);
   }
 
+  // Called from the Dropdown list 'x' button
   removeIndividualLimit(number: string) {
       const type = this.lotteryType();
       const mode = this.activeMode();
@@ -1540,6 +1548,121 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
       if (this.limitManageNumber() === number) {
           this.showLimitManagementModal.set(false);
       }
+  }
+  
+  // Called from the Modal 'Reset' button - Handles Batch Removal
+  removeBatchLimits() {
+      const inputRaw = this.limitManageNumber().trim();
+      if (!inputRaw) return;
+
+      const type = this.lotteryType();
+      const mode = this.activeMode();
+      
+      const parsedTargets = this.betParsingService.parseRaw(`${inputRaw} 1`, type);
+      if (parsedTargets.length === 0) {
+          this.statusMessage.set('Reset လုပ်ရန် ဂဏန်းမမှန်ကန်ပါ။');
+          setTimeout(() => this.statusMessage.set(''), 2000);
+          return;
+      }
+
+      this.appState.update(current => {
+        const currentState = current[type];
+        let newLimits: Map<string, number>;
+        
+        if (mode === 'အလယ်ဒိုင်') {
+            newLimits = new Map(currentState.individualLimitsMiddle);
+        } else {
+            newLimits = new Map(currentState.individualLimitsMain);
+        }
+
+        parsedTargets.forEach(target => {
+            newLimits.delete(target.number);
+        });
+
+        const newState = { ...currentState };
+        if (mode === 'အလယ်ဒိုင်') newState.individualLimitsMiddle = newLimits;
+        else newState.individualLimitsMain = newLimits;
+
+        return { ...current, [type]: newState };
+      });
+
+      this.showLimitManagementModal.set(false);
+      this.limitManageNumber.set('');
+      
+      if (parsedTargets.length > 1) {
+          this.statusMessage.set(`${inputRaw} အတွက် ${parsedTargets.length} ကွက်လုံးကို လစ်မစ်ဖျက်ပြီးပါပြီ (Default Limit ပြန်ဖြစ်ပါမည်)။`);
+      } else {
+          this.statusMessage.set(`ဂဏန်း ${parsedTargets[0].number} ၏ သီးသန့်လစ်မစ်ကို ဖျက်ပြီးပါပြီ။`);
+      }
+      setTimeout(() => this.statusMessage.set(''), 3000);
+  }
+  
+  // New Feature: Apply Batch Changes to Existing Custom Limits
+  applyBatchLimitChange(operation: 'add' | 'sub' | 'set') {
+      const val = this.batchLimitAmount();
+      if ((val < 0 && operation !== 'set') || isNaN(val)) {
+          this.statusMessage.set('ပမာဏ မမှန်ကန်ပါ။');
+          setTimeout(() => this.statusMessage.set(''), 2000);
+          return;
+      }
+
+      const type = this.lotteryType();
+      const mode = this.activeMode();
+
+      this.appState.update(current => {
+          const currentState = current[type];
+          let oldLimits: Map<string, number>;
+          
+          if (mode === 'အလယ်ဒိုင်') oldLimits = currentState.individualLimitsMiddle;
+          else oldLimits = currentState.individualLimitsMain;
+
+          if (oldLimits.size === 0) {
+              this.statusMessage.set('ပြင်ဆင်ရန် သီးသန့်လစ်မစ်များ မရှိသေးပါ။');
+              setTimeout(() => this.statusMessage.set(''), 2000);
+              return current; 
+          }
+
+          const newLimits = new Map<string, number>();
+          
+          oldLimits.forEach((currentLimit, number) => {
+              let newLimit = currentLimit;
+              if (operation === 'add') newLimit += val;
+              else if (operation === 'sub') newLimit = Math.max(0, newLimit - val);
+              else if (operation === 'set') newLimit = val;
+              
+              newLimits.set(number, newLimit);
+          });
+
+          const newState = { ...currentState };
+          if (mode === 'အလယ်ဒိုင်') newState.individualLimitsMiddle = newLimits;
+          else newState.individualLimitsMain = newLimits;
+
+          return { ...current, [type]: newState };
+      });
+      
+      if (operation === 'add') this.statusMessage.set(`ရှိပြီးသား လစ်မစ်အားလုံးကို ${val} ထပ်ပေါင်းလိုက်ပါပြီ။`);
+      else if (operation === 'sub') this.statusMessage.set(`ရှိပြီးသား လစ်မစ်အားလုံးမှ ${val} နှုတ်လိုက်ပါပြီ။`);
+      else if (operation === 'set') this.statusMessage.set(`ရှိပြီးသား လစ်မစ်အားလုံးကို ${val} သို့ ပြောင်းလိုက်ပါပြီ။`);
+      
+      setTimeout(() => this.statusMessage.set(''), 3000);
+      this.batchLimitAmount.set(0);
+  }
+
+  clearAllCustomLimits() {
+      if(!confirm("သီးသန့်လစ်မစ် အားလုံးကို ဖျက်ရန် သေချာပါသလား? (Default Limit အတိုင်း ပြန်ဖြစ်သွားပါမည်)")) return;
+
+      const type = this.lotteryType();
+      const mode = this.activeMode();
+
+      this.appState.update(current => {
+          const newState = { ...current[type] };
+          if (mode === 'အလယ်ဒိုင်') newState.individualLimitsMiddle = new Map();
+          else newState.individualLimitsMain = new Map();
+          return { ...current, [type]: newState };
+      });
+      
+      this.statusMessage.set("သီးသန့်လစ်မစ် အားလုံးကို ဖျက်ပြီးပါပြီ။");
+      setTimeout(() => this.statusMessage.set(''), 2000);
   }
   
   toggleCustomLimitsDropdown() {
