@@ -1,4 +1,3 @@
-
 import { Injectable, inject, signal } from '@angular/core';
 import { initializeApp } from 'firebase/app';
 import { getDatabase, ref, set, update, onValue, push, serverTimestamp, Database } from 'firebase/database';
@@ -16,9 +15,11 @@ const firebaseConfig = {
 };
 
 export interface ChatMessage {
+  id?: string; // Firebase Key
   text: string;
   senderId: string;
   timestamp: number;
+  status?: 'accepted' | 'rejected' | 'pending'; // New Status Field
 }
 
 export interface Contact {
@@ -27,6 +28,7 @@ export interface Contact {
   chatId: string;
   lastMessage?: string;
   lastTimestamp?: number;
+  isLocked?: boolean; // New Locked Status
 }
 
 export interface FriendRequest {
@@ -147,7 +149,11 @@ export class FirebaseService {
     onValue(messagesRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        const msgs = Object.values(data) as ChatMessage[];
+        // Map object entries to preserve Key as ID
+        const msgs = Object.entries(data).map(([key, value]: [string, any]) => ({
+            ...value,
+            id: key
+        })) as ChatMessage[];
         this.currentMessages.set(msgs);
       } else {
         this.currentMessages.set([]);
@@ -175,5 +181,30 @@ export class FirebaseService {
     updates[`users/${otherId}/contacts/${this.myId}/lastTimestamp`] = serverTimestamp();
     
     await update(ref(this.db), updates);
+  }
+
+  async markMessageAsAccepted(chatId: string, messageId: string) {
+      const updates: any = {};
+      updates[`messages/${chatId}/${messageId}/status`] = 'accepted';
+      await update(ref(this.db), updates);
+  }
+
+  async toggleChatLock(otherId: string, currentStatus: boolean) {
+      const newStatus = !currentStatus;
+      const updates: any = {};
+      
+      // Update Lock Status for BOTH sides
+      // This allows the Agent's app to check this value and disable the input
+      updates[`users/${this.myId}/contacts/${otherId}/isLocked`] = newStatus;
+      updates[`users/${otherId}/contacts/${this.myId}/isLocked`] = newStatus;
+      
+      await update(ref(this.db), updates);
+
+      // Auto send message
+      if(newStatus) {
+          await this.sendMessage("⛔ စာရင်းပိတ်လိုက်ပါပြီ။", otherId);
+      } else {
+          await this.sendMessage("✅ စာရင်းပြန်ဖွင့်ပါပြီ။", otherId);
+      }
   }
 }

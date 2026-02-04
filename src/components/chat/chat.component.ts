@@ -98,6 +98,20 @@ export class ChatComponent {
       await this.firebaseService.sendMessage(text, contactId);
   }
 
+  async toggleLock() {
+      const contact = this.selectedContact();
+      if (!contact) return;
+      
+      const currentState = !!contact.isLocked;
+      const confirmMsg = currentState 
+          ? "စာရင်းပြန်ဖွင့်မှာ သေချာလား?" 
+          : "စာရင်းပိတ်လိုက်မှာ သေချာလား? (တစ်ဖက်လူ စာပို့လို့ရတော့မည် မဟုတ်ပါ)";
+      
+      if(confirm(confirmMsg)) {
+          await this.firebaseService.toggleChatLock(contact.userId, currentState);
+      }
+  }
+
   copyMyId() {
       navigator.clipboard.writeText(this.firebaseService.myId);
       this.statusMessage.set('ID Copy ကူးပြီးပါပြီ');
@@ -122,14 +136,23 @@ export class ChatComponent {
       this.showQrModal.set(false);
   }
 
-  triggerImport(text: string) {
+  async triggerImport(msg: ChatMessage) {
       const contact = this.selectedContact();
       if (!contact) return;
       
+      // 1. Emit to parent to handle the grid import
       this.importBets.emit({
-          text: text,
+          text: msg.text,
           agentName: contact.name
       });
+
+      // 2. Mark as accepted in Firebase (so button disappears)
+      if (msg.id) {
+          await this.firebaseService.markMessageAsAccepted(contact.chatId, msg.id);
+      }
+
+      // 3. Send automated reply to sender
+      await this.firebaseService.sendMessage("လက်ခံပြီးပါပြီ ✅", contact.userId);
   }
 
   // Helper to check if a message looks like a bet list

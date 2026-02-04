@@ -66,9 +66,18 @@
         <div class="flex-grow overflow-y-auto p-2">
             @if (activeTab() === 'contacts') {
                 @for (contact of firebaseService.contacts(); track contact.userId) {
-                    <div (click)="selectContact(contact)" class="p-3 rounded-lg mb-1 cursor-pointer transition-colors flex justify-between items-center" [class]="selectedContact()?.userId === contact.userId ? 'bg-indigo-900/50 border border-indigo-600' : 'bg-slate-800 hover:bg-slate-700'">
+                    <div (click)="selectContact(contact)" class="p-3 rounded-lg mb-1 cursor-pointer transition-colors flex justify-between items-center" 
+                         [class]="selectedContact()?.userId === contact.userId ? 'bg-indigo-900/50 border border-indigo-600' : 'bg-slate-800 hover:bg-slate-700'">
                         <div>
-                            <p class="font-bold text-slate-200">{{ contact.name }}</p>
+                            <div class="flex items-center gap-2">
+                                <p class="font-bold text-slate-200">{{ contact.name }}</p>
+                                @if(contact.isLocked) {
+                                    <span class="text-[10px] bg-red-600 text-white px-1.5 rounded-full flex items-center gap-0.5">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd" /></svg>
+                                        Closed
+                                    </span>
+                                }
+                            </div>
                             <p class="text-xs text-slate-400 truncate w-32">{{ contact.lastMessage || 'No messages yet' }}</p>
                         </div>
                         @if (contact.lastTimestamp) {
@@ -101,14 +110,34 @@
       <main class="flex-grow flex flex-col bg-slate-900 w-2/3" [class.hidden]="!selectedContact() && 'hidden md:flex'">
         @if (selectedContact()) {
             <!-- Chat Header -->
-            <div class="p-3 bg-slate-800 border-b border-slate-700 flex items-center gap-3">
-                <button (click)="backToContacts()" class="md:hidden text-slate-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
-                </button>
-                <div>
-                    <h3 class="font-bold text-white">{{ selectedContact()?.name }}</h3>
-                    <p class="text-[10px] text-slate-400 font-mono">{{ selectedContact()?.userId }}</p>
+            <div class="p-3 bg-slate-800 border-b border-slate-700 flex justify-between items-center shadow-md z-10">
+                <div class="flex items-center gap-3">
+                    <button (click)="backToContacts()" class="md:hidden text-slate-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+                    </button>
+                    <div>
+                        <h3 class="font-bold text-white flex items-center gap-2">
+                            {{ selectedContact()?.name }}
+                            @if(selectedContact()?.isLocked) {
+                                <span class="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">Locked</span>
+                            }
+                        </h3>
+                        <p class="text-[10px] text-slate-400 font-mono">{{ selectedContact()?.userId }}</p>
+                    </div>
                 </div>
+                
+                <!-- LOCK BUTTON -->
+                <button (click)="toggleLock()" 
+                        [class]="selectedContact()?.isLocked ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'"
+                        class="text-white text-xs font-bold py-1.5 px-3 rounded flex items-center gap-1 transition-colors">
+                    @if(selectedContact()?.isLocked) {
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd" /></svg>
+                        ပြန်ဖွင့်မည်
+                    } @else {
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2H7V7a3 3 0 015.905-.75 1 1 0 001.937-.5A5.002 5.002 0 0010 2z" /></svg>
+                        ပိတ်မည်
+                    }
+                </button>
             </div>
 
             <!-- Messages -->
@@ -121,10 +150,17 @@
                             
                             <!-- Import Button for Incoming Bet Messages -->
                             @if (msg.senderId !== firebaseService.myId && isBetMessage(msg.text)) {
-                                <button (click)="triggerImport(msg.text)" class="mt-2 text-xs bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded flex items-center gap-1 w-full justify-center">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                    ဇယားသွင်းမည်
-                                </button>
+                                @if(msg.status === 'accepted') {
+                                    <div class="mt-2 text-xs bg-slate-600 text-green-300 px-2 py-1 rounded flex items-center gap-1 w-full justify-center opacity-70">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+                                        Accepted (လက်ခံပြီး)
+                                    </div>
+                                } @else {
+                                    <button (click)="triggerImport(msg)" class="mt-2 text-xs bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded flex items-center gap-1 w-full justify-center shadow-lg transform transition-transform active:scale-95">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        ဇယားသွင်းမည်
+                                    </button>
+                                }
                             }
                         </div>
                         <span class="text-[10px] text-slate-500 mt-1">{{ msg.timestamp | date:'shortTime' }}</span>
