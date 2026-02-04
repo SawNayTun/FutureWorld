@@ -1,9 +1,9 @@
-
 import { Component, ChangeDetectionStrategy, inject, signal, output, effect, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { FirebaseService, Contact, FriendRequest, ChatMessage } from '../../services/firebase.service';
 import jsQR from 'jsqr';
+import QRCode from 'qrcode';
 
 @Component({
   selector: 'app-chat',
@@ -29,6 +29,10 @@ export class ChatComponent {
   messageInput = signal('');
   
   statusMessage = signal('');
+  
+  // QR Generation State
+  showQrModal = signal(false);
+  myQrCodeUrl = signal('');
   
   @ViewChild('scrollContainer') scrollContainer!: ElementRef;
   @ViewChild('fileInput') fileInput!: ElementRef<HTMLInputElement>;
@@ -98,6 +102,24 @@ export class ChatComponent {
       navigator.clipboard.writeText(this.firebaseService.myId);
       this.statusMessage.set('ID Copy ကူးပြီးပါပြီ');
       setTimeout(() => this.statusMessage.set(''), 2000);
+  }
+
+  // --- QR Generation Logic ---
+  async showMyQr() {
+      if (this.firebaseService.myId) {
+          try {
+              const url = await QRCode.toDataURL(this.firebaseService.myId, { width: 256, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
+              this.myQrCodeUrl.set(url);
+              this.showQrModal.set(true);
+          } catch(e) {
+              console.error(e);
+              this.statusMessage.set('QR ထုတ်မရပါ');
+          }
+      }
+  }
+
+  closeQrModal() {
+      this.showQrModal.set(false);
   }
 
   triggerImport(text: string) {
