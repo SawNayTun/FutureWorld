@@ -156,9 +156,6 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
   showCustomLimitsDropdown = signal(false);
   showChat = signal(false);
   
-  // Realtime Session Timer
-  private sessionTimer: any;
-
   // Default Voucher Settings
   voucherSettings = computed(() => {
       const state = this.appState()[this.lotteryType()];
@@ -768,10 +765,6 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
   }
 
   async ngOnInit(): Promise<void> {
-    // Start Real-Time Session Timer
-    this.checkTimeAndSetSession();
-    this.sessionTimer = setInterval(() => this.checkTimeAndSetSession(), 60000); // Check every minute
-
     const [legacyAgents, midAgents, mainAgents, upperBookies, agentUpperBookies, currency] = await Promise.all([
       this.persistenceService.get<Agent[]>('lottery_agents'),
       this.persistenceService.get<Agent[]>('lottery_agents_middle'),
@@ -814,20 +807,13 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-      if (this.sessionTimer) clearInterval(this.sessionTimer);
+      // Removed automatic timer
   }
 
   private determineSessionFromTime(): 'morning' | 'evening' {
       const hour = new Date().getHours();
       // Assume morning session is before 12:00 PM
       return hour < 12 ? 'morning' : 'evening';
-  }
-
-  private checkTimeAndSetSession(): void {
-      const targetSession = this.determineSessionFromTime();
-      if (this.lotteryType() === '2D' && this.session() !== targetSession) {
-          this.setSession(targetSession);
-      }
   }
 
   private createInitialState(type: LotteryType): AppState {
@@ -913,8 +899,9 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
       voucherSettings: stored.voucherSettings || initial.voucherSettings,
       agentDrafts: stored.agentDrafts || {}, 
       agentInputs: stored.agentInputs || {},
-      // Ensure session is real-time on load, ignoring stored session if it conflicts with current time reality
-      session: type === '2D' ? this.determineSessionFromTime() : stored.session 
+      // Use stored session if available, otherwise default to initial (time-based) only for fresh start.
+      // This disables auto-switching on reload.
+      session: stored.session || initial.session 
     };
   }
   
