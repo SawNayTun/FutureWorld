@@ -89,10 +89,13 @@ export class ChatComponent {
   }
 
   async sendMessage() {
-      if(!this.messageInput().trim() || !this.selectedContact()) return;
+      const contact = this.selectedContact();
+      // Check if locked
+      if (!contact || contact.isLocked) return;
+      if (!this.messageInput().trim()) return;
       
       const text = this.messageInput();
-      const contactId = this.selectedContact()!.userId;
+      const contactId = contact.userId;
       
       this.messageInput.set(''); // Clear immediately
       await this.firebaseService.sendMessage(text, contactId);
