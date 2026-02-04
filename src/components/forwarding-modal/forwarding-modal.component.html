@@ -37,8 +37,8 @@
         </div>
 
         <!-- Bookie Columns -->
-        @for(bookie of upperBookies(); track bookie.name) {
-          <div class="bg-slate-900/50 border border-slate-700 rounded-lg w-64 flex-shrink-0 flex flex-col"
+        @for(bookie of upperBookies(); track bookie.name; let i = $index) {
+          <div [id]="'bookie-card-' + i" class="bg-slate-900/50 border border-slate-700 rounded-lg w-64 flex-shrink-0 flex flex-col"
                (dragover)="onDragOver($event, bookie.name)"
                (dragleave)="onDragLeave($event)"
                (drop)="onDrop($event, bookie.name)"
@@ -61,9 +61,16 @@
                 }
               }
             </div>
-            <div class="p-2 border-t border-slate-700">
-                <button (click)="copyBookieList(bookie.name)" class="w-full bg-sky-600 hover:bg-sky-700 text-white text-sm font-bold py-1.5 px-3 rounded transition">
-                  စာရင်း Copy ကူးရန်
+            <div class="p-2 border-t border-slate-700 flex gap-2">
+                <!-- Text Copy Button -->
+                <button (click)="copyBookieList(bookie.name)" title="Copy Text" class="flex-grow bg-sky-600 hover:bg-sky-700 text-white text-sm font-bold py-1.5 px-2 rounded transition flex items-center justify-center gap-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+                  Text
+                </button>
+                <!-- Image Copy Button -->
+                <button (click)="copyAsImage(bookie.name, i)" title="Copy as Image (for Messenger)" class="flex-grow bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold py-1.5 px-2 rounded transition flex items-center justify-center gap-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  Img
                 </button>
             </div>
           </div>
@@ -71,7 +78,7 @@
       </div>
     </main>
      @if (copiedMessage()) {
-      <div class="absolute bottom-20 left-1/2 -translate-x-1/2 p-2 bg-green-900/80 text-green-300 text-sm rounded-md shadow-lg transition-opacity duration-300">
+      <div class="absolute bottom-20 left-1/2 -translate-x-1/2 p-2 bg-green-900/90 text-green-300 text-sm font-bold rounded-md shadow-lg transition-opacity duration-300 z-50 border border-green-600">
         {{ copiedMessage() }}
       </div>
     }

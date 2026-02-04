@@ -140,6 +140,16 @@ export class FirebaseService {
       const requestRef = ref(this.db, `requests/${this.myId}/${senderId}`);
       await set(requestRef, null);
   }
+  
+  async removeContact(otherId: string) {
+      const updates: any = {};
+      // Remove from my list
+      updates[`users/${this.myId}/contacts/${otherId}`] = null;
+      // Remove from their list (Mutual unfriend)
+      updates[`users/${otherId}/contacts/${this.myId}`] = null;
+      
+      await update(ref(this.db), updates);
+  }
 
   selectChat(chatId: string) {
     this.activeChatId.set(chatId);

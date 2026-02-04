@@ -5,6 +5,8 @@ import { UpperBookie } from '../../models/app.models';
 export type Bet = { number: string; amount: number; originalId: string; };
 export type Assignments = Record<string, Bet[]>; // Key is bookie name or 'unassigned'
 
+declare var html2canvas: any;
+
 @Component({
   selector: 'app-forwarding-modal',
   templateUrl: './forwarding-modal.component.html',
@@ -186,10 +188,59 @@ export class ForwardingModalComponent implements OnInit {
     this.copyToClipboard(textToCopy);
   }
 
+  async copyAsImage(bookieName: string, index: number) {
+      if (typeof html2canvas === 'undefined') {
+          alert('Error: Image generation library not loaded.');
+          return;
+      }
+
+      const element = document.getElementById(`bookie-card-${index}`);
+      if(!element) return;
+
+      this.copiedMessage.set('ပုံထုတ်နေသည်... (Generating Image)');
+
+      try {
+          // 1. Generate Canvas from DOM
+          // We use current styles (Dark Mode) which looks good on Messenger
+          const canvas = await html2canvas(element, {
+              scale: 2, // Higher resolution for better readability
+              backgroundColor: '#1e293b', // Match Slate-800 background
+              logging: false,
+              useCORS: true
+          });
+
+          // 2. Convert to Blob
+          canvas.toBlob(async (blob: Blob | null) => {
+              if(!blob) {
+                  this.copiedMessage.set('Image generation failed.');
+                  return;
+              }
+
+              // 3. Write to Clipboard
+              try {
+                  // This requires Secure Context (HTTPS or Localhost)
+                  await navigator.clipboard.write([
+                      new ClipboardItem({ 'image/png': blob })
+                  ]);
+                  this.copiedMessage.set('ပုံ Copy ကူးပြီးပါပြီ! Messenger တွင် Paste (Ctrl+V) ချနိုင်ပါပြီ။');
+              } catch (err) {
+                  console.error('Clipboard write failed', err);
+                  this.copiedMessage.set('Clipboard Error: HTTPS လိုအပ်ပါသည်။');
+              }
+              
+              setTimeout(() => this.copiedMessage.set(''), 4000);
+          }, 'image/png');
+
+      } catch (e) {
+          console.error(e);
+          this.copiedMessage.set('Error generating image.');
+      }
+  }
+
   private copyToClipboard(text: string): void {
     if (text) {
       navigator.clipboard.writeText(text);
-      this.copiedMessage.set('ကူးယူပြီးပါပြီ!');
+      this.copiedMessage.set('စာ Copy ကူးပြီးပါပြီ!');
       setTimeout(() => this.copiedMessage.set(''), 2000);
     }
   }

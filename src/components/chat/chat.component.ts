@@ -87,6 +87,18 @@ export class ChatComponent {
   backToContacts() {
       this.selectedContact.set(null);
   }
+  
+  async deleteContact() {
+      const contact = this.selectedContact();
+      if(!contact) return;
+      
+      if(confirm(`'${contact.name}' ကို သူငယ်ချင်းစာရင်းမှ ပယ်ဖျက်ရန် (Unfriend) သေချာပါသလား? \n(စာရင်းနှင့် စကားပြောခန်းများပါ ပျောက်သွားပါမည်)`)) {
+          await this.firebaseService.removeContact(contact.userId);
+          this.selectedContact.set(null); // Return to list
+          this.statusMessage.set('Unfriend လုပ်ပြီးပါပြီ');
+          setTimeout(() => this.statusMessage.set(''), 2000);
+      }
+  }
 
   async sendMessage() {
       const contact = this.selectedContact();
