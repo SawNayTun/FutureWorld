@@ -1,3 +1,4 @@
+
 <div class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
   <div class="w-full h-full max-w-7xl max-h-[90vh] bg-slate-800 border border-teal-700 rounded-lg shadow-2xl flex flex-col relative">
     
@@ -90,5 +91,44 @@
         သိမ်းမည် & ပိတ်မည်
       </button>
     </footer>
+  </div>
+
+  <!-- HIDDEN VOUCHER GENERATION TEMPLATE (WHITE BG, BOX GRID LAYOUT WITH BORDERS) -->
+  <div style="position: absolute; left: -9999px; top: 0;">
+    @for(bookie of upperBookies(); track bookie.name; let i = $index) {
+      <div [id]="'hidden-voucher-' + i" class="bg-white text-black p-4 w-[800px] font-mono border-2 border-black relative">
+          <!-- Header -->
+          <div class="text-center border-b-2 border-black pb-3 mb-0">
+            <h2 class="text-3xl font-bold uppercase tracking-wider">{{ bookie.name }}</h2>
+            <div class="flex justify-between text-lg mt-2 font-bold text-gray-800 px-2">
+               <span>{{ lotteryType() === '3D' ? formatDate(drawDate()) : (session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း') }}</span>
+               <span>{{ formatDate(drawDate()) }}</span>
+            </div>
+          </div>
+
+          <!-- Content (Table-like Grid using Flexbox with Borders) -->
+          @if (assignments()[bookie.name] && assignments()[bookie.name].length > 0) {
+            <!-- Outer Border (Top/Left) -->
+            <div style="display: flex; flex-wrap: wrap; width: 100%; border-top: 2px solid #000; border-left: 2px solid #000; margin-top: 10px;">
+               @for(bet of assignments()[bookie.name]; track bet.originalId) {
+                  <!-- Each Cell: 25% Width (4 Cols) -> Right and Bottom border -->
+                  <div style="width: 25%; box-sizing: border-box; border-right: 2px solid #000; border-bottom: 2px solid #000; padding: 10px 5px; display: flex; justify-content: center; align-items: center; background-color: #fff;">
+                     <span style="font-weight: bold; font-size: 24px; color: #000;">{{ bet.number }}</span>
+                     <span style="margin: 0 8px; font-weight: bold; font-size: 20px; color: #555;">=</span>
+                     <span style="font-weight: bold; font-size: 24px; color: #000;">{{ bet.amount }}</span>
+                  </div>
+               }
+            </div>
+          } @else {
+             <div class="text-center py-10 text-gray-400 text-xl font-bold">စာရင်းမရှိပါ</div>
+          }
+
+          <!-- Footer -->
+          <div class="border-t-2 border-black pt-3 mt-4 flex justify-between items-center font-bold text-2xl px-2">
+             <span>Total Count: {{ assignments()[bookie.name].length }}</span>
+             <span>{{ getBookieTotal(bookie.name).toLocaleString() }}</span>
+          </div>
+      </div>
+    }
   </div>
 </div>

@@ -67,7 +67,7 @@ export class ForwardingModalComponent implements OnInit {
     }
     
     this.assignments.update(current => {
-      const newAssignments = JSON.parse(JSON.stringify(current));
+      const newAssignments = JSON.parse(JSON.stringify(current)) as Assignments;
       
       // Remove from source
       newAssignments[draggedItem.from] = newAssignments[draggedItem.from].filter((b: Bet) => b.originalId !== draggedItem.bet.originalId);
@@ -98,8 +98,12 @@ export class ForwardingModalComponent implements OnInit {
     }
 
     this.assignments.update(current => {
-        const newAssignments = JSON.parse(JSON.stringify(current));
+        // Explicitly cast to Assignments to prevent 'any' type inference
+        const newAssignments = JSON.parse(JSON.stringify(current)) as Assignments;
+        
         const originalBetList = newAssignments[bookieName];
+        if (!originalBetList) return current;
+
         const betToUpdateIndex = originalBetList.findIndex((b: Bet) => b.originalId === bet.originalId);
         if (betToUpdateIndex === -1) return current;
 
@@ -126,7 +130,10 @@ export class ForwardingModalComponent implements OnInit {
         } else if (remainder < 0) {
             // If newAmount > originalAmount, we need to pull from unassigned
             let deficit = -remainder;
+            
+            if (!newAssignments['unassigned']) newAssignments['unassigned'] = [];
             const unassignedBetIndex = newAssignments['unassigned'].findIndex((b: Bet) => b.number === bet.number);
+            
             if (unassignedBetIndex > -1) {
                 const availableAmount = newAssignments['unassigned'][unassignedBetIndex].amount;
                 // FIX: Cast availableAmount to a number for comparison to prevent type errors.
@@ -194,17 +201,20 @@ export class ForwardingModalComponent implements OnInit {
           return;
       }
 
-      const element = document.getElementById(`bookie-card-${index}`);
-      if(!element) return;
+      // Changed target to the hidden white grid template
+      const element = document.getElementById(`hidden-voucher-${index}`);
+      if(!element) {
+          console.error(`Element hidden-voucher-${index} not found`);
+          return;
+      }
 
       this.copiedMessage.set('ပုံထုတ်နေသည်... (Generating Image)');
 
       try {
           // 1. Generate Canvas from DOM
-          // We use current styles (Dark Mode) which looks good on Messenger
           const canvas = await html2canvas(element, {
               scale: 2, // Higher resolution for better readability
-              backgroundColor: '#1e293b', // Match Slate-800 background
+              backgroundColor: '#ffffff', // White Background as requested
               logging: false,
               useCORS: true
           });
@@ -245,7 +255,7 @@ export class ForwardingModalComponent implements OnInit {
     }
   }
   
-  private formatDate(isoString: string): string {
+  formatDate(isoString: string): string {
     if (!isoString) return '';
     return new Date(isoString).toLocaleDateString('en-CA');
   }

@@ -1,2720 +1,588 @@
-import { Component, ChangeDetectionStrategy, inject, signal, computed, effect, ViewChild, ElementRef, OnInit, OnDestroy, WritableSignal } from '@angular/core';
+
+import { Component, ChangeDetectionStrategy, signal, computed, inject, effect, ElementRef, ViewChild, OnInit } from '@angular/core';
+import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { BetParsingService, RawBet } from '../../services/bet-parsing.service';
 import { LicenseService } from '../../services/license.service';
-import { PersistenceService } from '../../services/persistence.service';
-import { BetParsingService } from '../../services/bet-parsing.service';
 import { VoiceRecognitionService } from '../../services/voice-recognition.service';
+import { PersistenceService } from '../../services/persistence.service';
+import { 
+  GridCell, BetDetail, VoucherSettings, Report, Agent, UpperBookie 
+} from '../../models/app.models';
+
+import { SummaryCardComponent } from '../summary-card/summary-card.component';
+import { LoaderComponent } from '../loader/loader.component';
+import { ChatComponent } from '../chat/chat.component';
 import { ReportViewerComponent } from '../report-viewer/report-viewer.component';
 import { UserGuideComponent } from '../user-guide/user-guide.component';
 import { ForwardingModalComponent, Assignments } from '../forwarding-modal/forwarding-modal.component';
-import { ChatComponent } from '../chat/chat.component';
-import { Agent, UpperBookie, Report, GridCell, BetDetail, VoucherSettings } from '../../models/app.models';
-import { SummaryCardComponent } from '../summary-card/summary-card.component';
-
-// --- Interfaces ---
-type LotteryType = '2D' | '3D';
-interface Bet { number: string; amount: number; }
-interface HistoryEntry { id: string; input: string; source: string; mode?: string; rawBets?: Bet[]; }
-interface AcceptedSubmission { agent: string; content: string; timestamp: Date; total: number; }
-
-interface AgentPayoutInfo {
-  name: string;
-  totalSales: number;
-  commissionRate: number;
-  commissionAmount: number;
-  netSales: number;
-  
-  // New granular win details
-  totalWinBetAmount: number; 
-  totalWinAmount: number;    
-  
-  overLimitWinBetAmount: number; 
-  overLimitWinAmount: number;    
-  
-  heldWinBetAmount: number;   
-  payout: number;             
-  
-  finalBalance: number;
-  individualBets: number[]; 
-}
-
-interface PayoutDetails {
-  winningNumber: string;
-  totalBet: number;
-  totalHeldBet: number;
-  totalHeldPayout: number;
-  totalOverLimitBet: number;
-  totalOverLimitPayout: number;
-  agentPayouts: AgentPayoutInfo[];
-  otherPayouts: AgentPayoutInfo[]; 
-}
-
-interface AgentWithPerformance extends Agent {
-  totalSales: number;
-}
-type OverLimitListItem = { number: string; overLimitAmount: number };
-interface ProfitOptimizerSuggestion {
-  topNumbers: GridCell[];
-  suggestedHoldingIncrease: number;
-  potentialProfitIncrease: number;
-}
-interface InboxResult {
-  agent: string;
-  totalAccepted: number;
-  rejectedText?: string;
-  isAllAccepted: boolean;
-}
-
-interface VoucherData {
-  items: { number: string; amount: number }[];
-  totalAmount: number;
-  totalCount: number;
-  date: string;
-  time: string;
-  currency: string;
-  settings?: VoucherSettings; 
-}
-
-interface RiskAnalysis {
-  number: string;
-  totalHeld: number;
-  estimatedPayout: number;
-  netProfitLoss: number; 
-}
-
-interface AppState {
-    betHistory: HistoryEntry[];
-    // Split limits for Middle and Main bookies
-    defaultLimitMain: number;
-    defaultLimitMiddle: number;
-    
-    // "individualLimits" now strictly stores SINGLE NUMBER overrides (e.g. "01": 500)
-    individualLimitsMain: Map<string, number>;
-    individualLimitsMiddle: Map<string, number>;
-
-    // NEW: "groupLimits" stores batch rules (e.g. "1a": 500, "nk": 1000)
-    groupLimitsMain: Map<string, number>;
-    groupLimitsMiddle: Map<string, number>;
-    
-    payoutRate: number;
-    commissionToPay: number;
-    commissionFromUpperBookie: number;
-    agentCommissionFromBookie: number;
-    
-    myAgentName: string;
-    agentProfiles: string[];
-    myMiddleBookieName: string;
-    myMainBookieName: string;
-    session?: 'morning' | 'evening';
-    drawDate?: string;
-    userInput: string;
-    voucherSettings?: VoucherSettings;
-    agentDrafts?: Record<string, string[]>; 
-    agentInputs?: Record<string, string>;   
-}
 
 declare var html2canvas: any;
+
+interface HistoryEntry {
+  id: string;
+  input: string;
+  timestamp: number;
+  bets: BetDetail[]; 
+}
 
 @Component({
   selector: 'app-code-analyzer',
   templateUrl: './code-analyzer.component.html',
   styleUrls: ['./code-analyzer.component.css'],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, ReportViewerComponent, UserGuideComponent, ForwardingModalComponent, SummaryCardComponent, ChatComponent],
-  host: {
-    '(window:keydown)': 'handleKeyboardEvents($event)',
-    '(window:beforeunload)': 'onBeforeUnload($event)'
-  }
+  standalone: true,
+  imports: [
+    CommonModule, 
+    FormsModule, 
+    SummaryCardComponent, 
+    LoaderComponent,
+    ChatComponent,
+    ReportViewerComponent,
+    UserGuideComponent,
+    ForwardingModalComponent
+  ],
+  providers: [DatePipe]
 })
-export class CodeAnalyzerComponent implements OnInit, OnDestroy {
-  licenseService = inject(LicenseService);
-  persistenceService = inject(PersistenceService);
+export class CodeAnalyzerComponent implements OnInit {
   betParsingService = inject(BetParsingService);
+  licenseService = inject(LicenseService);
   voiceService = inject(VoiceRecognitionService);
+  persistenceService = inject(PersistenceService);
+  private datePipe = inject(DatePipe);
 
-  // --- Child Elements ---
-  @ViewChild('fileInput') fileInput!: ElementRef<HTMLInputElement>;
   @ViewChild('mainBetInput') mainBetInput!: ElementRef<HTMLTextAreaElement>;
 
-
-  // --- Core State ---
-  lotteryType = signal<LotteryType>('2D');
-  modes = ['အေးဂျင့်', 'အလယ်ဒိုင်', 'ဒိုင်ကြီး'];
-  activeMode = signal(this.modes[0]);
-  
-  appState = signal<Record<LotteryType, AppState>>({
-    '2D': this.createInitialState('2D'),
-    '3D': this.createInitialState('3D')
-  });
-
-  isDataLoaded = signal(false);
-  showReports = signal(false);
-  showUserGuide = signal(false);
-  showClearAllConfirmation = signal(false);
-  isOnline = signal(navigator.onLine);
-  currencies: Array<'K' | '฿' | '¥'> = ['K', '฿', '¥'];
-  currencySymbol = signal<'K' | '฿' | '¥'>('K');
-  
-  // --- New Feature States ---
-  showHeatmap = signal(false);
-  showRiskModal = signal(false);
+  // --- Panic Mode State ---
   isPanicMode = signal(false);
   panicInput = signal('');
-  showVoucherSettings = signal(false);
-  showCustomLimitsDropdown = signal(false);
-  showChat = signal(false);
-  
-  // Default Voucher Settings
-  voucherSettings = computed(() => {
-      const state = this.appState()[this.lotteryType()];
-      return state.voucherSettings || {
-          headerText: this.bookieName(),
-          footerText: 'ကံကောင်းပါစေ',
-          fontSize: 'medium',
-          showDateTime: true
-      } as VoucherSettings;
-  });
 
-  // --- Relationship Management State (Shared) ---
+  // --- App State ---
+  lotteryType = signal<'2D' | '3D'>('2D');
+  session = signal<'morning' | 'evening'>('morning');
+  drawDate = signal<string>(new Date().toISOString().split('T')[0]);
+  activeMode = signal<string>('အေးဂျင့်'); // 'အေးဂျင့်' | 'အလယ်ဒိုင်' | 'ဒိုင်ကြီး'
+  modes = ['အေးဂျင့်', 'အလယ်ဒိုင်', 'ဒိုင်ကြီး'];
+
+  // --- Settings ---
+  bookieName = signal('My Shop');
+  agentProfiles = signal<string[]>(['My Shop']);
+  payoutRate = signal(80);
+  defaultLimit = signal(10000);
+  commissionToPay = signal(0); // For direct inputs
+  commissionFromUpperBookie = signal(0); // Middle bookie gets from Upper
+  agentCommissionFromBookie = signal(15); // Agent gets from Bookie
+  currencySymbol = signal('K');
+  currencies = ['K', '฿', '¥'];
+
+  // --- Data ---
+  userInput = signal('');
+  history = signal<HistoryEntry[]>([]);
+  customLimits = signal<Map<string, number>>(new Map()); // Key: Number, Value: Limit
+  
+  // --- Agents & Bookies Management ---
+  agents = signal<Agent[]>([]);
   upperBookies = signal<UpperBookie[]>([]);
-  newUpperBookieName = signal('');
-  newUpperBookieCommission = signal(10);
-  
-  agentUpperBookies = signal<{name: string}[]>([]);
-  newAgentUpperBookieName = signal('');
-  
-  // -- Agent State (Separated by Mode) --
-  middleBookieAgents = signal<Agent[]>([]);
-  mainBookieAgents = signal<Agent[]>([]);
-  
-  agents = computed(() => {
-      if (this.activeMode() === 'အလယ်ဒိုင်') return this.middleBookieAgents();
-      if (this.activeMode() === 'ဒိုင်ကြီး') return this.mainBookieAgents();
-      return []; 
-  });
+  agentUpperBookies = signal<UpperBookie[]>([]); // For Agent mode
 
-  newAgentName = signal('');
-  newAgentCommission = signal(5);
-  agentSortBy = signal<'name' | 'sales'>('sales');
-
-  // --- Workflow State ---
-  inboxInput = signal('');
-  selectedAgentForInbox = signal<string | null>(null);
-  pendingInboxConfirmation = signal<{ 
-    safeBets: Bet[];
-    overLimitBets: Bet[];
-    agent: string;
-    originalInput: string;
-  } | null>(null);
-  acceptedSubmissions = signal<AcceptedSubmission[]>([]);
-  lastInboxResult = signal<InboxResult | null>(null);
-
+  // --- UI Toggles ---
+  showUserGuide = signal(false);
+  showRiskModal = signal(false);
+  showHeatmap = signal(false);
   showPayoutModal = signal(false);
-  winningNumber = signal('');
-  payoutDetails = signal<PayoutDetails | null>(null);
-  
-  // Replaced writable signal with computed for per-agent drafts
-  pendingSubmissions = computed(() => {
-      const type = this.lotteryType();
-      const name = this.bookieName();
-      const drafts = this.appState()[type].agentDrafts || {};
-      return drafts[name] || [];
-  });
-
-  showSubmissionModal = signal(false);
-  submissionText = signal('');
-  
-  // --- Voucher Modal State ---
-  showVoucherModal = signal(false);
-  voucherData = signal<VoucherData | null>(null);
-
-  acknowledgedOverLimits = signal<Map<string, number>>(new Map());
-  
-  // --- State for Middle Bookie Over-Limit Management ---
-  rejectedOverLimits = signal<Set<string>>(new Set<string>());
-  acknowledgedHeldOverLimits = signal<Map<string, number>>(new Map());
-  isForwardingModalOpen = signal(false);
-
-  // --- Bet Detail Editing State ---
-  showBetDetailModal = signal(false);
-  selectedNumberForDetail = signal<string | null>(null);
-
-  // --- Limit Management State ---
+  showReports = signal(false);
+  showChat = signal(false);
+  showCustomLimitsDropdown = signal(false);
   showLimitManagementModal = signal(false);
-  limitManageNumber = signal('');
-  limitManageAmount = signal<number>(0);
-  batchLimitAmount = signal<number>(0); // For batch modification
-
-  // --- Messaging State ---
-  confirmationMessage = signal('');
+  showClearAllConfirmation = signal(false);
+  showSubmissionModal = signal(false);
+  showVoucherModal = signal(false);
+  showVoucherSettings = signal(false);
+  showBetDetailModal = signal(false);
+  pendingInboxConfirmation = signal(false);
+  
+  // --- UI Temporary State ---
   statusMessage = signal('');
   isGeneratingImage = signal(false);
-  
-  // --- Profit Optimizer State ---
-  profitOptimizerSuggestion = signal<ProfitOptimizerSuggestion | null>(null);
-  suggestionAppliedRecently = signal(false);
-
-  // --- 3D Specific State ---
   search3DTerm = signal('');
-
-  // --- Proxy Computed Signals for Active State ---
-  betHistory = computed(() => this.appState()[this.lotteryType()].betHistory);
+  batchLimitAmount = signal<number>(0);
+  limitManageNumber = signal('');
+  limitManageAmount = signal(0);
   
-  // Updated Computed: Return correct default limit based on mode
-  defaultLimit = computed(() => {
-      const state = this.appState()[this.lotteryType()];
-      if (this.activeMode() === 'အလယ်ဒိုင်') return state.defaultLimitMiddle;
-      return state.defaultLimitMain;
+  // --- Complex Logic State ---
+  profitOptimizerSuggestion = signal<any>(null); // Placeholder for profit logic
+  suggestionAppliedRecently = signal(false);
+  
+  // Forwarding / Holding
+  acknowledgedOverLimits = signal<Map<string, number>>(new Map()); // Number -> Amount
+  heldOverLimits = signal<Map<string, number>>(new Map()); // Number -> Amount explicitly held
+  
+  isForwardingModalOpen = signal(false);
+  submissionText = signal('');
+  overLimitConfirmationText = signal('');
+  
+  // Inbox
+  selectedAgentForInbox = signal<string | null>(null);
+  inboxInput = signal('');
+  lastInboxResult = signal<string | null>(null);
+  inboxReplyText = signal('');
+  inboxPendingBets = signal<RawBet[]>([]);
+
+  // Payout
+  winningNumber = signal('');
+  payoutDetails = signal<any>(null);
+
+  // Voucher
+  voucherData = signal<any>(null);
+  voucherSettings = signal<VoucherSettings>({
+    headerText: 'အောင်စေပိုင်စေ',
+    footerText: 'ကံကောင်းပါစေ',
+    fontSize: 'small',
+    showDateTime: true
   });
 
-  payoutRate = computed(() => this.appState()[this.lotteryType()].payoutRate);
-  commissionToPay = computed(() => this.appState()[this.lotteryType()].commissionToPay);
-  commissionFromUpperBookie = computed(() => this.appState()[this.lotteryType()].commissionFromUpperBookie);
-  agentCommissionFromBookie = computed(() => this.appState()[this.lotteryType()].agentCommissionFromBookie);
-  
-  // COMPUTED: Calculates the "Real" effective limit for every number
-  // It merges Group Limits (expanded) and Individual Limits (overrides)
-  effectiveLimits = computed(() => {
-      const type = this.lotteryType();
-      const state = this.appState()[type];
-      const mode = this.activeMode();
-      
-      const groupLimits = mode === 'အလယ်ဒိုင်' ? state.groupLimitsMiddle : state.groupLimitsMain;
-      const individualLimits = mode === 'အလယ်ဒိုင်' ? state.individualLimitsMiddle : state.individualLimitsMain;
-      
-      // We calculate effective limits on demand for calculations
-      const effectiveMap = new Map<string, number>();
+  // Management Inputs
+  newAgentName = signal('');
+  newAgentCommission = signal(15);
+  newUpperBookieName = signal('');
+  newUpperBookieCommission = signal(10);
+  newAgentUpperBookieName = signal('');
 
-      // 1. Expand Group Limits (e.g. "1a" -> 01, 10, 11...)
-      groupLimits.forEach((limit, key) => {
-          // Use a dummy amount '1' to just get the numbers list from the parser
-          const expanded = this.betParsingService.parseRaw(`${key} 1`, type);
-          expanded.forEach(bet => {
-              effectiveMap.set(bet.number, limit);
-          });
-      });
+  // Detail Modal State
+  selectedNumberForDetail = signal('');
+  betsForDetailModal = signal<BetDetail[]>([]);
 
-      // 2. Apply Individual Overrides (Specific wins over Group)
-      individualLimits.forEach((limit, number) => {
-          effectiveMap.set(number, limit);
-      });
-
-      return effectiveMap;
-  });
-  
-  // COMPUTED: For Display List (Shows Group Keys + Individual Keys)
-  customLimitsList = computed(() => {
-      const type = this.lotteryType();
-      const state = this.appState()[type];
-      const mode = this.activeMode();
-      
-      const groupLimits = mode === 'အလယ်ဒိုင်' ? state.groupLimitsMiddle : state.groupLimitsMain;
-      const individualLimits = mode === 'အလယ်ဒိုင်' ? state.individualLimitsMiddle : state.individualLimitsMain;
-
-      const list: { number: string, limit: number, isGroup: boolean }[] = [];
-
-      // Add Groups
-      groupLimits.forEach((limit, key) => {
-          list.push({ number: key, limit, isGroup: true });
-      });
-
-      // Add Individuals
-      individualLimits.forEach((limit, key) => {
-          list.push({ number: key, limit, isGroup: false });
-      });
-
-      // Sort by Key
-      return list.sort((a, b) => a.number.localeCompare(b.number));
-  });
-  
-  bookieName = computed(() => {
-      const state = this.appState()[this.lotteryType()];
-      switch (this.activeMode()) {
-          case 'အေးဂျင့်': return state.myAgentName;
-          case 'အလယ်ဒိုင်': return state.myMiddleBookieName;
-          case 'ဒိုင်ကြီး': return state.myMainBookieName;
-          default: return state.myMainBookieName;
+  constructor() {
+    // Keyboard listener for Panic Mode
+    window.addEventListener('keydown', (e) => {
+      if (e.altKey && e.key === 'h') {
+        this.isPanicMode.update(v => !v);
       }
-  });
-
-  agentProfiles = computed(() => this.appState()[this.lotteryType()].agentProfiles || []);
-
-  session = computed(() => this.appState()['2D'].session!);
-  drawDate = computed(() => this.appState()['3D'].drawDate!);
-  userInput = computed(() => this.appState()[this.lotteryType()].userInput);
-
-  // --- Computed Signals (Logic) ---
-  lotteryData = computed<Map<string, BetDetail[]>>(() => {
-    const data = new Map<string, BetDetail[]>();
-    const currentMode = this.activeMode();
-    const currentAgentName = this.bookieName();
-
-    const history = this.betHistory().filter(h => {
-        const entryMode = h.mode || 'ဒိုင်ကြီး';
-        // Base filter: Mode must match
-        if (entryMode !== currentMode) return false;
-
-        // Specific filter for Agent Mode: Source must match current Profile Name
-        // This ensures the grid only shows data for the currently selected profile
-        if (currentMode === 'အေးဂျင့်') {
-            return h.source === currentAgentName;
-        }
-
-        return true;
+      if (this.isPanicMode() && e.key === 'Escape') {
+        this.isPanicMode.set(false);
+      }
     });
 
-    for (const entry of history) {
-      const parsedBets = this.betParsingService.parseRaw(entry.input, this.lotteryType());
-      parsedBets.forEach(bet => {
-        const existingBets = data.get(bet.number) || [];
-        const newBet: BetDetail = { id: crypto.randomUUID(), amount: bet.amount, source: entry.source, historyEntryId: entry.id };
-        data.set(bet.number, [...existingBets, newBet]);
-      });
-    }
-    return data;
+    // Auto-save effect
+    effect(() => {
+        // Simple auto-save trigger on key changes if needed
+        // For performance, we usually do this on specific actions (add/delete)
+    });
+  }
+
+  async ngOnInit() {
+      await this.loadState();
+  }
+
+  // --- Computed: Core Data Aggregation ---
+  aggregatedBets = computed(() => {
+    const hist = this.history();
+    const totals = new Map<string, number>();
+    const breakdown = new Map<string, BetDetail[]>();
+
+    hist.forEach(entry => {
+        entry.bets.forEach(b => {
+            const num = (b as any).number; 
+            if (num) {
+                totals.set(num, (totals.get(num) || 0) + b.amount);
+                const list = breakdown.get(num) || [];
+                list.push(b);
+                breakdown.set(num, list);
+            }
+        });
+    });
+
+    return { totals, breakdown };
   });
 
-  // --- Computed Signals (UI) ---
-  recentHistory = computed(() => {
-      const currentMode = this.activeMode();
-      const currentAgentName = this.bookieName();
-      
-      return this.betHistory()
-        .filter(h => {
-             const entryMode = h.mode || 'ဒိုင်ကြီး';
-             // If in Agent mode, filter strictly by the current Agent Name (Source)
-             // This ensures switching profiles clears the history view for the user
-             if (currentMode === 'အေးဂျင့်') {
-                 return entryMode === currentMode && h.source === currentAgentName;
-             }
-             return entryMode === currentMode;
-        })
-        .slice(-20)
-        .reverse();
+  customLimitsList = computed(() => {
+      const list: {number: string, limit: number}[] = [];
+      this.customLimits().forEach((val, key) => list.push({number: key, limit: val}));
+      return list.sort((a,b) => a.number.localeCompare(b.number));
   });
 
-  // 2D Grid
   gridCells = computed<GridCell[]>(() => {
-    if (this.lotteryType() !== '2D') return [];
-    const data = this.lotteryData();
+    const { totals, breakdown } = this.aggregatedBets();
+    const defLimit = this.defaultLimit();
+    const custom = this.customLimits();
     const cells: GridCell[] = [];
-    const currentEffectiveLimits = this.effectiveLimits();
-    const currentDefLimit = this.defaultLimit();
-    const isAgent = this.activeMode() === 'အေးဂျင့်';
+    const is3D = this.lotteryType() === '3D';
+    
+    if (!is3D) {
+        for (let i = 0; i < 100; i++) {
+          const num = i.toString().padStart(2, '0');
+          const amount = totals.get(num) || 0;
+          const limit = custom.get(num) ?? defLimit;
+          const isOverLimit = amount > limit;
+          const overLimitAmount = Math.max(0, amount - limit);
+          
+          cells.push({
+            number: num,
+            amount,
+            isOverLimit,
+            hasCustomLimit: custom.has(num),
+            breakdown: breakdown.get(num) || [], 
+            betsString: (breakdown.get(num) || []).map(b => b.amount).join(', '),
+            betsTooltip: (breakdown.get(num) || []).map(b => `${b.amount} (${b.source})`).join('\n'),
+            overLimitAmount,
+            limit
+          });
+        }
+    } else {
+        const allNumbers = new Set([...totals.keys(), ...custom.keys()]);
+        const sorted = Array.from(allNumbers).sort();
+        
+        for (const num of sorted) {
+             const amount = totals.get(num) || 0;
+             const limit = custom.get(num) ?? defLimit;
+             const isOverLimit = amount > limit;
+             const overLimitAmount = Math.max(0, amount - limit);
 
-    for (let i = 0; i < 100; i++) {
-      const numberStr = i.toString().padStart(2, '0');
-      const breakdown = data.get(numberStr) || [];
-      const amount = breakdown.reduce((sum, bet) => sum + bet.amount, 0);
-      
-      // Agents don't have custom limits logic in this view
-      const hasCustomLimit = !isAgent && currentEffectiveLimits.has(numberStr);
-      const limit = hasCustomLimit ? currentEffectiveLimits.get(numberStr)! : currentDefLimit;
-      
-      // Agents should NEVER be 'over limit' in their view (unless we implement specific agent limits later)
-      const isOverLimit = !isAgent && amount > limit;
-      const overLimitAmount = isOverLimit ? amount - limit : 0;
-
-      const amounts = breakdown.map(b => b.amount);
-      const betsString = amounts.length > 0 ? (isAgent ? amounts.join(', ') : `(${amounts.join(', ')})`) : '';
-      const betsTooltip = breakdown.map(b => `${b.source}: ${b.amount}`).join('; ');
-
-      cells.push({ number: numberStr, amount, isOverLimit, hasCustomLimit, breakdown, betsString, betsTooltip, overLimitAmount, limit });
+             cells.push({
+                number: num,
+                amount,
+                isOverLimit,
+                hasCustomLimit: custom.has(num),
+                breakdown: breakdown.get(num) || [],
+                betsString: (breakdown.get(num) || []).map(b => b.amount).join(', '),
+                betsTooltip: (breakdown.get(num) || []).map(b => `${b.amount} (${b.source})`).join('\n'),
+                overLimitAmount,
+                limit
+             });
+        }
     }
     return cells;
   });
 
-  // 3D List
-  listItems = computed<GridCell[]>(() => {
-      if (this.lotteryType() !== '3D') return [];
-      const data = this.lotteryData();
-      const items: GridCell[] = [];
-      const currentEffectiveLimits = this.effectiveLimits();
-      const currentDefLimit = this.defaultLimit();
-      const isAgent = this.activeMode() === 'အေးဂျင့်';
-
-      for (const [numberStr, breakdown] of data.entries()) {
-          const amount = breakdown.reduce((sum, bet) => sum + bet.amount, 0);
-          if (amount === 0) continue;
-          
-          const hasCustomLimit = !isAgent && currentEffectiveLimits.has(numberStr);
-          const limit = hasCustomLimit ? currentEffectiveLimits.get(numberStr)! : currentDefLimit;
-
-          const isOverLimit = !isAgent && amount > limit;
-          const overLimitAmount = isOverLimit ? amount - limit : 0;
-          const amounts = breakdown.map(b => b.amount);
-          const betsString = amounts.length > 0 ? `(${amounts.join(', ')})` : '';
-          const betsTooltip = breakdown.map(b => `${b.source}: ${b.amount}`).join('; ');
-          
-          items.push({ number: numberStr, amount, isOverLimit, hasCustomLimit, breakdown, betsString, betsTooltip, overLimitAmount, limit });
-      }
-      return items.sort((a, b) => a.number.localeCompare(b.number));
-  });
-
   filteredListItems = computed(() => {
-      const term = this.search3DTerm().toLowerCase();
-      if (!term) return this.listItems();
-      return this.listItems().filter(item => item.number.includes(term));
+      const term = this.search3DTerm();
+      if (!term) return this.gridCells();
+      return this.gridCells().filter(c => c.number.includes(term));
   });
 
-  totalBetAmount = computed<number>(() => {
-    const data = this.lotteryType() === '2D' ? this.gridCells() : this.listItems();
-    return data.reduce((sum, cell) => sum + cell.amount, 0);
+  recentHistory = computed(() => {
+      // Return top 20 recent history entries
+      return this.history().slice(0, 20);
   });
 
-  overLimitCells = computed(() => {
-    const data = this.lotteryType() === '2D' ? this.gridCells() : this.listItems();
-    return data.filter(cell => cell.isOverLimit)
-  });
-
-  betsForDetailModal = computed<BetDetail[]>(() => {
-    const selectedNumber = this.selectedNumberForDetail();
-    if (!selectedNumber) return [];
-    return this.lotteryData().get(selectedNumber) || [];
-  });
-
-  // --- New Over-Limit List Computations (Ghost Data Fix) ---
-  private filterAcknowledged(list: GridCell[], acknowledgedMap: Map<string, number>): OverLimitListItem[] {
-      const displayed: OverLimitListItem[] = [];
-      for (const cell of list) {
-          const acknowledgedAmount = acknowledgedMap.get(cell.number) || 0;
-          const actualAcknowledged = Math.min(acknowledgedAmount, cell.overLimitAmount);
-          const newOverLimitPortion = cell.overLimitAmount - actualAcknowledged;
-          if (newOverLimitPortion > 0) {
-              displayed.push({ number: cell.number, overLimitAmount: newOverLimitPortion });
-          }
-      }
-      return displayed;
-  }
+  // --- Computed: Financials & Over Limits ---
+  totalBetAmount = computed(() => this.gridCells().reduce((sum, c) => sum + c.amount, 0));
   
-  displayedOverLimitNumbers = computed<OverLimitListItem[]>(() => {
-    if (this.activeMode() === 'အေးဂျင့်') return [];
-    return this.filterAcknowledged(this.overLimitCells(), this.acknowledgedOverLimits());
-  });
-
-  // This is now purely for the UI List (Pending items to be copied)
-  forwardableOverLimitNumbers = computed<OverLimitListItem[]>(() => {
-      if (this.activeMode() !== 'အလယ်ဒိုင်') return [];
-      const nonRejected = this.overLimitCells().filter(cell => !this.rejectedOverLimits().has(cell.number));
-      return this.filterAcknowledged(nonRejected, this.acknowledgedOverLimits());
-  });
-
-  forwardableNumbersForModal = computed(() => {
-    return this.forwardableOverLimitNumbers().map(item => ({ number: item.number, amount: item.overLimitAmount }));
-  });
-
-  heldOverLimitNumbers = computed<OverLimitListItem[]>(() => {
-      if (this.activeMode() !== 'အလယ်ဒိုင်') return [];
-      const rejected = this.overLimitCells().filter(cell => this.rejectedOverLimits().has(cell.number));
-      return this.filterAcknowledged(rejected, this.acknowledgedHeldOverLimits());
-  });
-
-  // --- Financial Computations ---
-  totalOverLimitAmount = computed<number>(() => this.overLimitCells().reduce((sum, cell) => sum + cell.overLimitAmount, 0));
-
-  // FINANCIAL ONLY: Sum of ALL over-limit amounts that are NOT rejected.
-  // This amount is considered "Forwarded" for financial calculations, regardless of whether it's been "Copied/Acknowledged" in the UI.
-  financialForwardAmount = computed<number>(() => {
-    if (this.activeMode() !== 'အလယ်ဒိုင်') return 0;
-    return this.overLimitCells()
-        .filter(cell => !this.rejectedOverLimits().has(cell.number))
-        .reduce((sum, cell) => sum + cell.overLimitAmount, 0);
-  });
-
-  // PENDING UI ONLY: Amount displayed in the purple box (not yet copied).
-  pendingForwardableAmount = computed<number>(() => {
-    if (this.activeMode() !== 'အလယ်ဒိုင်') return 0;
-    return this.overLimitCells()
-        .filter(cell => !this.rejectedOverLimits().has(cell.number))
-        .reduce((sum, cell) => {
-             const ack = this.acknowledgedOverLimits().get(cell.number) || 0;
-             const actualAck = Math.min(ack, cell.overLimitAmount);
-             return sum + (cell.overLimitAmount - actualAck);
-        }, 0);
-  });
+  overLimitCells = computed(() => this.gridCells().filter(c => c.isOverLimit));
   
+  totalOverLimitAmount = computed(() => this.overLimitCells().reduce((sum, c) => sum + c.overLimitAmount, 0));
+
+  forwardableOverLimitNumbers = computed(() => {
+    const acknowledged = this.acknowledgedOverLimits();
+    const held = this.heldOverLimits();
+    return this.overLimitCells().map(cell => {
+      const ack = acknowledged.get(cell.number) || 0;
+      const hld = held.get(cell.number) || 0;
+      const diff = cell.overLimitAmount - (ack + hld);
+      return { number: cell.number, overLimitAmount: diff };
+    }).filter(i => i.overLimitAmount > 0);
+  });
+
+  forwardableNumbersForModal = computed(() => this.forwardableOverLimitNumbers().map(i => ({number: i.number, amount: i.overLimitAmount})));
+
+  heldOverLimitNumbers = computed(() => {
+      const held = this.heldOverLimits();
+      const list: {number: string, overLimitAmount: number}[] = [];
+      held.forEach((amt, num) => {
+          if (amt > 0) list.push({ number: num, overLimitAmount: amt });
+      });
+      return list;
+  });
+
+  displayedOverLimitNumbers = computed(() => {
+      const acknowledged = this.acknowledgedOverLimits();
+      return this.overLimitCells().map(cell => {
+          const ack = acknowledged.get(cell.number) || 0;
+          const diff = cell.overLimitAmount - ack;
+          return { number: cell.number, overLimitAmount: diff };
+      }).filter(i => i.overLimitAmount > 0);
+  });
+
   totalHeldAmount = computed<number>(() => {
-    const totalSales = this.totalBetAmount();
-    if (this.activeMode() === 'အလယ်ဒိုင်') {
-        // Held = Total Sales - (All Forwardable Amounts).
-        return totalSales - this.financialForwardAmount();
-    }
-    return totalSales - this.totalOverLimitAmount();
-  });
-  
-  payableCommissionAmount = computed<number>(() => {
-    let agentCommSum = 0;
-    const agentSalesMap = new Map<string, number>();
-
-    this.lotteryData().forEach(bets => {
-        bets.forEach(bet => {
-            agentSalesMap.set(bet.source, (agentSalesMap.get(bet.source) || 0) + bet.amount);
-        });
-    });
-
-    const agents = this.agents();
-    const knownSources = new Set<string>();
-
-    agents.forEach(agent => {
-        const sales = agentSalesMap.get(agent.name) || 0;
-        agentCommSum += sales * (agent.commission / 100);
-        knownSources.add(agent.name);
-    });
-
-    let directSales = 0;
-    agentSalesMap.forEach((amount, source) => {
-        if (!knownSources.has(source)) {
-            directSales += amount;
-        }
-    });
-
-    const globalRate = this.commissionToPay();
-    const directComm = directSales * (globalRate / 100);
-
-    return agentCommSum + directComm;
-  });
-  
-  receivableCommissionAmount = computed<number>(() => {
-    if (this.activeMode() !== 'အလယ်ဒိုင်') return 0;
-    return this.financialForwardAmount() * (this.commissionFromUpperBookie() / 100);
-  });
-  
-  agentCommissionEarned = computed<number>(() => this.totalBetAmount() * (this.agentCommissionFromBookie() / 100));
-  
-  netAmount = computed<number>(() => {
-    switch (this.activeMode()) {
-      case 'အလယ်ဒိုင်':
-        return this.totalHeldAmount() + this.receivableCommissionAmount() - this.payableCommissionAmount();
-      case 'ဒိုင်ကြီး':
-        return this.totalHeldAmount() - this.payableCommissionAmount();
-      case 'အေးဂျင့်':
-        return this.agentCommissionEarned();
-      default: return 0;
-    }
+      const baseHeld = this.totalBetAmount() - this.totalOverLimitAmount();
+      const heldValues = Array.from<number>(this.heldOverLimits().values());
+      const explicitHeld = heldValues.reduce((a, b) => a + b, 0);
+      return baseHeld + explicitHeld;
   });
 
-  agentPayableToBookie = computed<number>(() => {
-      if (this.activeMode() !== 'အေးဂျင့်') return 0;
+  payableCommissionAmount = computed(() => {
+      return this.totalBetAmount() * (this.commissionToPay() / 100);
+  });
+
+  receivableCommissionAmount = computed(() => {
+      return this.totalHeldAmount() * (this.commissionFromUpperBookie() / 100);
+  });
+
+  agentCommissionEarned = computed(() => {
+      return this.totalBetAmount() * (this.agentCommissionFromBookie() / 100);
+  });
+
+  agentPayableToBookie = computed(() => {
       return this.totalBetAmount() - this.agentCommissionEarned();
   });
 
-  // --- Risk Analysis Computation ---
-  riskAnalysis = computed<RiskAnalysis[]>(() => {
-      const data = this.lotteryType() === '2D' ? this.gridCells() : this.listItems();
-      const rate = this.payoutRate();
-      const commPay = this.commissionToPay();
-      
-      const risks: RiskAnalysis[] = [];
-      
-      for(const cell of data) {
-          if (cell.amount === 0) continue;
-          
-          const held = cell.amount - cell.overLimitAmount;
-          if (held <= 0) continue;
-
-          // Income from this number (Held - Commission)
-          // Simplified: using global commission rate for risk estimation
-          const income = held * (1 - (commPay / 100));
-          // Expense if this number wins
-          const expense = held * rate;
-          
-          const net = income - expense;
-          
-          risks.push({
-              number: cell.number,
-              totalHeld: held,
-              estimatedPayout: expense,
-              netProfitLoss: net
-          });
-      }
-      
-      return risks.sort((a, b) => a.netProfitLoss - b.netProfitLoss);
+  netAmount = computed(() => {
+      if (this.activeMode() === 'အေးဂျင့်') return this.agentCommissionEarned();
+      return this.totalBetAmount() - this.payableCommissionAmount() - this.totalOverLimitAmount(); 
   });
 
-  worst10Risks = computed(() => this.riskAnalysis().slice(0, 10));
-
-  agentsWithPerformance = computed<AgentWithPerformance[]>(() => {
-    const salesMap = new Map<string, number>();
-    this.lotteryData().forEach(bets => {
-      bets.forEach(bet => {
-        salesMap.set(bet.source, (salesMap.get(bet.source) || 0) + bet.amount);
-      });
-    });
-    const currentAgents = this.agents();
-    const agents = currentAgents.map(agent => ({ ...agent, totalSales: salesMap.get(agent.name) || 0 }));
-    agents.sort((a, b) => this.agentSortBy() === 'sales' ? b.totalSales - a.totalSales : a.name.localeCompare(b.name));
-    return agents;
-  });
-  
-  isInboxSubmitDisabled = computed(() => {
-    const input = this.inboxInput();
-    if (!input.trim()) return true;
-    if (this.selectedAgentForInbox()) return false;
-  
-    const agentLineMatch = input.match(/^Agent\s*:\s*(.+)/im);
-    if (agentLineMatch) return false;
-    
-    const newFormatMatch = input.match(/^---\s*(.+?)\s*---/m);
-    if (newFormatMatch) return false;
-  
-    const lines = input.split(/\r?\n/);
-    const firstLineTrimmed = lines.find(l => l.trim() !== '')?.trim();
-    if (firstLineTrimmed && !firstLineTrimmed.toLowerCase().startsWith('agent') && firstLineTrimmed.includes(':')) {
-        return false;
-    }
-    
-    if (firstLineTrimmed && !firstLineTrimmed.includes('=') && !/^\d+\s+\d+/.test(firstLineTrimmed)) {
-      return false;
-    }
-    
-    return true;
+  pendingForwardableAmount = computed(() => {
+      return this.forwardableOverLimitNumbers().reduce((sum, item) => sum + item.overLimitAmount, 0);
   });
 
-  overLimitConfirmationText = computed(() => {
-    const confirmation = this.pendingInboxConfirmation();
-    if (!confirmation) {
-      return '';
-    }
-    return confirmation.overLimitBets.map(b => `${b.number}=${b.amount}`).join(', ');
+  pendingSubmissions = computed(() => {
+      const hist = this.history();
+      return [...hist].reverse().map(h => h.input);
   });
 
-  top10OverLimitCells = computed<GridCell[]>(() => {
-    return this.overLimitCells()
-      .sort((a, b) => b.overLimitAmount - a.overLimitAmount)
-      .slice(0, 10);
+  riskAnalysis = computed(() => {
+     const totalIncome = this.totalHeldAmount(); 
+     const rate = this.payoutRate();
+     
+     const risks = this.gridCells()
+        .filter(c => c.amount > 0)
+        .map(cell => {
+            const heldBetOnThis = cell.amount - cell.overLimitAmount; 
+            const payout = heldBetOnThis * rate;
+            const net = totalIncome - payout;
+            return {
+                number: cell.number,
+                totalHeld: heldBetOnThis,
+                estimatedPayout: payout,
+                netProfitLoss: net
+            };
+        });
+     return risks.sort((a,b) => a.netProfitLoss - b.netProfitLoss).slice(0, 10);
   });
   
-  inboxReplyText = computed(() => {
-      const result = this.lastInboxResult();
-      if (!result) return '';
-      
-      const header = `--- ${this.bookieName()} ---`;
-      const today = new Date().toLocaleDateString('en-CA');
-      let dateLine = `နေ့စွဲ: ${this.lotteryType() === '3D' ? this.formatDate(this.drawDate()) : today}`;
-      if (this.lotteryType() === '2D') {
-          const sessionText = this.session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း';
-          dateLine += ` (${sessionText})`;
-      }
-      
-      const agentLine = `Agent: ${result.agent}`;
-      const separator = '--------------------';
-      
-      let statusBody = '';
-      if (result.isAllAccepted) {
-          statusBody = "စာရင်းအားလုံး လက်ခံရရှိပါသည်။";
-      } else {
-          statusBody = "လစ်မစ်ကျော် ဂဏန်းများမှလွဲ၍ ကျန်စာရင်းများ လက်ခံရရှိပါသည်။\n\n(မရသော ဂဏန်းများ)\n" + (result.rejectedText || '-');
-      }
-      
-      const totalLine = `စုစုပေါင်း လက်ခံငွေ: ${result.totalAccepted.toLocaleString()} ${this.currencySymbol()}`;
-      const footer = "ကျေးဇူးတင်ပါသည်။";
-      
-      return `${header}\n${dateLine}\n${agentLine}\n${separator}\n${statusBody}\n${separator}\n${totalLine}\n${footer}`;
-  });
-
-  constructor() {
-    window.addEventListener('online', () => this.isOnline.set(true));
-    window.addEventListener('offline', () => this.isOnline.set(false));
-      
-    // Persistence Effects
-    effect(() => {
-      if(this.isDataLoaded()) {
-        this.persistenceService.set('lottery_agents_middle', this.middleBookieAgents());
-      }
-    });
-    effect(() => {
-      if(this.isDataLoaded()) {
-        this.persistenceService.set('lottery_agents_main', this.mainBookieAgents());
-      }
-    });
-    effect(() => {
-      if(this.isDataLoaded()) {
-        this.persistenceService.set('lottery_upper_bookies', this.upperBookies());
-      }
-    });
-    effect(() => {
-      if(this.isDataLoaded()) {
-        this.persistenceService.set('lottery_agent_upper_bookies', this.agentUpperBookies());
-      }
-    });
-    effect(() => {
-      if(this.isDataLoaded()) {
-        this.persistenceService.set('lottery_currency', this.currencySymbol());
-      }
-    });
-    effect(() => {
-      if(this.isDataLoaded()) {
-        this.persistenceService.set('lottery_active_mode', this.activeMode());
-      }
-    });
-    effect(() => {
-      if(this.isDataLoaded()) {
-        this.persistenceService.set('lottery_selected_type', this.lotteryType());
-      }
-    });
-    effect(() => {
-      const state = this.appState()['2D'];
-      if(this.isDataLoaded()) {
-        this.persistenceService.set('lottery_app_state_2d', state);
-      }
-    });
-    effect(() => {
-      const state = this.appState()['3D'];
-      if(this.isDataLoaded()) {
-        this.persistenceService.set('lottery_app_state_3d', state);
-      }
-    });
-    
-    effect(() => {
-      const currentAgents = this.agents();
-      if (currentAgents.length > 0 && !currentAgents.some(a => a.name === this.selectedAgentForInbox())) {
-        this.selectedAgentForInbox.set(currentAgents[0].name);
-      } else if (currentAgents.length === 0) {
-        this.selectedAgentForInbox.set(null);
-      }
-    });
-
-    effect(() => {
-      const topNumbers = this.top10OverLimitCells();
-      const mode = this.activeMode();
-      const type = this.lotteryType();
-  
-      if (topNumbers.length === 0 || mode === 'အေးဂျင့်' || type !== '2D') {
-        this.profitOptimizerSuggestion.set(null);
-        return;
-      }
-  
-      const totalOverLimitOfTop10 = topNumbers.reduce((sum, cell) => sum + cell.overLimitAmount, 0);
-      const averageOverLimit = totalOverLimitOfTop10 / topNumbers.length;
-      
-      const baseSuggestion = averageOverLimit * 0.25;
-      let suggestedHoldingIncrease = 0;
-
-      if (baseSuggestion > 10000) suggestedHoldingIncrease = Math.round(baseSuggestion / 1000) * 1000;
-      else if (baseSuggestion > 1000) suggestedHoldingIncrease = Math.round(baseSuggestion / 100) * 100;
-      else if (baseSuggestion > 100) suggestedHoldingIncrease = Math.round(baseSuggestion / 50) * 50;
-      else { this.profitOptimizerSuggestion.set(null); return; }
-
-      if (suggestedHoldingIncrease <= 0) { this.profitOptimizerSuggestion.set(null); return; }
-      
-      let potentialProfitIncrease = 0;
-      const commToPay = this.commissionToPay();
-      const commFromUpper = this.commissionFromUpperBookie();
-
-      for (const cell of topNumbers) {
-        const extraHeldAmount = Math.min(cell.overLimitAmount, suggestedHoldingIncrease);
-        if (mode === 'အလယ်ဒိုင်') potentialProfitIncrease += extraHeldAmount * (1 - (commToPay / 100) - (commFromUpper / 100));
-        else potentialProfitIncrease += extraHeldAmount * (1 - (commToPay / 100));
-      }
-      
-      if (potentialProfitIncrease <= 0) { this.profitOptimizerSuggestion.set(null); return; }
-  
-      this.profitOptimizerSuggestion.set({ topNumbers, suggestedHoldingIncrease, potentialProfitIncrease });
-      this.suggestionAppliedRecently.set(false);
-    });
-  }
-
-  async ngOnInit(): Promise<void> {
-    const [legacyAgents, midAgents, mainAgents, upperBookies, agentUpperBookies, currency] = await Promise.all([
-      this.persistenceService.get<Agent[]>('lottery_agents'),
-      this.persistenceService.get<Agent[]>('lottery_agents_middle'),
-      this.persistenceService.get<Agent[]>('lottery_agents_main'),
-      this.persistenceService.get<UpperBookie[]>('lottery_upper_bookies'),
-      this.persistenceService.get<{name: string}[]>('lottery_agent_upper_bookies'),
-      this.persistenceService.get<'K' | '฿' | '¥'>('lottery_currency'),
-    ]);
-
-    if (midAgents) this.middleBookieAgents.set(midAgents);
-    if (mainAgents) {
-        this.mainBookieAgents.set(mainAgents);
-    } else if (legacyAgents) {
-        this.mainBookieAgents.set(legacyAgents);
-    }
-
-    if (upperBookies) this.upperBookies.set(upperBookies);
-    if (agentUpperBookies) this.agentUpperBookies.set(agentUpperBookies);
-    if (currency) this.currencySymbol.set(currency);
-
-    const lastActiveMode = await this.persistenceService.get<string>('lottery_active_mode');
-    if (lastActiveMode && this.modes.includes(lastActiveMode)) {
-        this.activeMode.set(lastActiveMode);
-    }
-
-    const lastLotteryType = await this.persistenceService.get<LotteryType>('lottery_selected_type');
-    if (lastLotteryType && ['2D', '3D'].includes(lastLotteryType)) {
-        this.lotteryType.set(lastLotteryType);
-    }
-
-    const storedState2D = await this.persistenceService.get<AppState>('lottery_app_state_2d');
-    const storedState3D = await this.persistenceService.get<AppState>('lottery_app_state_3d');
-    
-    this.appState.update(current => ({
-      '2D': this.mergeState('2D', current['2D'], storedState2D),
-      '3D': this.mergeState('3D', current['3D'], storedState3D)
-    }));
-    
-    this.isDataLoaded.set(true);
-  }
-
-  ngOnDestroy(): void {
-      // Removed automatic timer
-  }
-
-  private determineSessionFromTime(): 'morning' | 'evening' {
-      const hour = new Date().getHours();
-      // Assume morning session is before 12:00 PM
-      return hour < 12 ? 'morning' : 'evening';
-  }
-
-  private createInitialState(type: LotteryType): AppState {
-    const today = new Date().toISOString().split('T')[0];
-    const defaultName = type === '2D' ? 'My 2D' : 'My 3D';
-    const defLimit = type === '2D' ? 50000 : 500000;
-    
-    return {
-      betHistory: [],
-      // Initialize both limits
-      defaultLimitMain: defLimit,
-      defaultLimitMiddle: defLimit,
-      individualLimitsMain: new Map<string, number>(),
-      individualLimitsMiddle: new Map<string, number>(),
-      groupLimitsMain: new Map<string, number>(),
-      groupLimitsMiddle: new Map<string, number>(),
-      
-      payoutRate: type === '2D' ? 80 : 500,
-      commissionToPay: 10,
-      commissionFromUpperBookie: 10,
-      agentCommissionFromBookie: 10,
-      myAgentName: defaultName + ' Agent',
-      agentProfiles: [defaultName + ' Agent'],
-      myMiddleBookieName: defaultName + ' Middle',
-      myMainBookieName: defaultName + ' Main',
-      session: type === '2D' ? this.determineSessionFromTime() : 'morning',
-      drawDate: today,
-      userInput: '',
-      voucherSettings: {
-          headerText: defaultName,
-          footerText: 'ကံကောင်းပါစေ',
-          fontSize: 'medium',
-          showDateTime: true
-      } as VoucherSettings,
-      agentDrafts: {},
-      agentInputs: {}
-    };
-  }
-
-  private mergeState(type: LotteryType, initial: AppState, stored?: AppState | null): AppState {
-    if (!stored) return initial;
-    
-    const legacyName = (stored as any).bookieName;
-    const storedAgentName = (stored as any).myAgentName;
-    const myAgentName = (storedAgentName !== undefined && storedAgentName !== null) ? storedAgentName : (legacyName || initial.myAgentName);
-    const storedMiddleName = (stored as any).myMiddleBookieName;
-    const myMiddleBookieName = (storedMiddleName !== undefined && storedMiddleName !== null) ? storedMiddleName : (legacyName || initial.myMiddleBookieName);
-    const storedMainName = (stored as any).myMainBookieName;
-    const myMainBookieName = (storedMainName !== undefined && storedMainName !== null) ? storedMainName : (legacyName || initial.myMainBookieName);
-    
-    let profiles = (stored as any).agentProfiles;
-    if (!profiles || !Array.isArray(profiles) || profiles.length === 0) {
-        profiles = [myAgentName];
-    } else if (!profiles.includes(myAgentName)) {
-        profiles = [...profiles, myAgentName];
-    }
-    
-    let individualLimitsMain = stored.individualLimitsMain ? new Map<string, number>(stored.individualLimitsMain) : new Map<string, number>();
-    let individualLimitsMiddle = stored.individualLimitsMiddle ? new Map<string, number>(stored.individualLimitsMiddle) : new Map<string, number>();
-    
-    // Restore Group Limits
-    let groupLimitsMain = stored.groupLimitsMain ? new Map<string, number>(stored.groupLimitsMain) : new Map<string, number>();
-    let groupLimitsMiddle = stored.groupLimitsMiddle ? new Map<string, number>(stored.groupLimitsMiddle) : new Map<string, number>();
-
-    // Legacy migration
-    if ((stored as any).individualLimits) {
-        const legacyLimits = new Map((stored as any).individualLimits);
-        if (individualLimitsMain.size === 0) individualLimitsMain = new Map(legacyLimits) as Map<string, number>;
-        if (individualLimitsMiddle.size === 0) individualLimitsMiddle = new Map(legacyLimits) as Map<string, number>;
-    }
-
-    let defaultLimitMain = stored.defaultLimitMain ?? (stored as any).defaultLimit ?? initial.defaultLimitMain;
-    let defaultLimitMiddle = stored.defaultLimitMiddle ?? (stored as any).defaultLimit ?? initial.defaultLimitMiddle;
-
-    return {
-      ...initial,
-      ...stored,
-      individualLimitsMain,
-      individualLimitsMiddle,
-      groupLimitsMain,
-      groupLimitsMiddle,
-      defaultLimitMain,
-      defaultLimitMiddle,
-      myAgentName,
-      myMiddleBookieName,
-      myMainBookieName,
-      agentProfiles: profiles,
-      voucherSettings: stored.voucherSettings || initial.voucherSettings,
-      agentDrafts: stored.agentDrafts || {}, 
-      agentInputs: stored.agentInputs || {},
-      session: stored.session || initial.session 
-    };
-  }
-  
-  updateCurrentState(key: keyof AppState, value: any): void {
-      const type = this.lotteryType();
-      this.appState.update(current => ({
-        ...current,
-        [type]: {
-          ...current[type],
-          [key]: value
-        }
+  agentsWithPerformance = computed(() => {
+      return this.agents().map(a => ({
+          name: a.name,
+          commission: a.commission,
+          totalSales: 0 
       }));
+  });
+
+  // --- Methods: Panic Mode ---
+  onPanicCalculatorInput(val: string) {
+    if (val === 'C') {
+      this.panicInput.set('');
+    } else if (val === '=') {
+      try {
+        // eslint-disable-next-line no-eval
+        this.panicInput.set(eval(this.panicInput()).toString());
+      } catch {
+        this.panicInput.set('Error');
+      }
+    } else {
+      this.panicInput.update(v => v + val);
+    }
   }
-  
-  updateDefaultLimit(val: number) {
-      const type = this.lotteryType();
-      const mode = this.activeMode();
-      this.appState.update(current => {
-          const newState = { ...current[type] };
-          if (mode === 'အလယ်ဒိုင်') {
-              newState.defaultLimitMiddle = val;
-          } else {
-              newState.defaultLimitMain = val;
-          }
-          return { ...current, [type]: newState };
-      });
+
+  // --- Methods: State Updates ---
+  updateCurrentState(key: string, value: any) {
+      if (key === 'drawDate') this.drawDate.set(value);
+      if (key === 'payoutRate') this.payoutRate.set(value);
+      if (key === 'userInput') this.userInput.set(value);
+      if (key === 'commissionToPay') this.commissionToPay.set(value);
+      if (key === 'commissionFromUpperBookie') this.commissionFromUpperBookie.set(value);
+      if (key === 'agentCommissionFromBookie') this.agentCommissionFromBookie.set(value);
+  }
+
+  setLotteryType(type: '2D' | '3D') {
+      this.lotteryType.set(type);
+      this.history.set([]); 
+      this.customLimits.set(new Map());
+      this.acknowledgedOverLimits.set(new Map());
+      this.heldOverLimits.set(new Map());
+      this.saveToStorage();
+  }
+
+  setSession(s: 'morning' | 'evening') {
+      this.session.set(s);
+  }
+
+  setActiveMode(m: string) {
+      this.activeMode.set(m);
   }
 
   updateBookieName(name: string) {
-      const mode = this.activeMode();
-      let key: keyof AppState;
-      if (mode === 'အေးဂျင့်') key = 'myAgentName';
-      else if (mode === 'အလယ်ဒိုင်') key = 'myMiddleBookieName';
-      else key = 'myMainBookieName';
-      
-      this.updateCurrentState(key, name);
+      this.bookieName.set(name);
   }
 
-  onProfileSelect(event: Event) {
-      const select = event.target as HTMLSelectElement;
-      const newName = select.value;
-      if (newName) {
-          const type = this.lotteryType();
-          const currentName = this.bookieName();
-          const currentInput = this.userInput();
+  updateDefaultLimit(val: number) {
+      this.defaultLimit.set(val);
+      // When default limit changes, over-limit amounts change, so we must sanitize
+      this.sanitizeOverLimitMaps();
+  }
 
-          // 1. Update State cleanly
-          this.appState.update(current => {
-              const currentState = current[type];
-              const inputs = currentState.agentInputs || {};
-              
-              // Save old input
-              const updatedInputs = { ...inputs, [currentName]: currentInput };
-              
-              // Get new input
-              const nextInput = updatedInputs[newName] || '';
-
-              return {
-                  ...current,
-                  [type]: {
-                      ...currentState,
-                      agentInputs: updatedInputs,
-                      myAgentName: newName,
-                      userInput: nextInput // Restore input for new profile
-                  }
-              };
-          });
-
-          select.value = '';
+  // --- Methods: Betting ---
+  onInputKeydown(event: KeyboardEvent) {
+      if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault();
+          this.addBetsFromInput();
       }
   }
 
-  addAgentProfile() {
-      const currentName = this.bookieName().trim();
-      if (currentName) {
-          const type = this.lotteryType();
-          this.appState.update(current => {
-              const profiles = current[type].agentProfiles || [];
-              if (profiles.includes(currentName)) {
-                  this.statusMessage.set("ဤအမည်ရှိပြီးသားဖြစ်ပါသည်။");
-                  setTimeout(() => this.statusMessage.set(""), 2000);
-                  return current;
-              }
-              this.statusMessage.set(`'${currentName}' ကို Profile စာရင်းတွင် သိမ်းဆည်းလိုက်ပါသည်။`);
-              setTimeout(() => this.statusMessage.set(""), 2000);
-              return { ...current, [type]: { ...current[type], agentProfiles: [...profiles, currentName] } };
-          });
-      } else {
-          this.statusMessage.set("အမည်ရိုက်ထည့်ပါ");
-          setTimeout(() => this.statusMessage.set(""), 2000);
-      }
-  }
+  addBetsFromInput() {
+      const input = this.userInput();
+      if (!input.trim()) return;
 
-  removeAgentProfile() {
-      const currentName = this.bookieName();
-      const profiles = this.agentProfiles();
-      if (profiles.length <= 1) {
-          alert("အနည်းဆုံး အမည်တစ်ခု ကျန်ရှိနေရပါမည်။");
-          return;
-      }
-      if (confirm(`'${currentName}' ကို Profile စာရင်းမှ ဖျက်ရန် သေချာပါသလား?`)) {
-           const type = this.lotteryType();
-           this.appState.update(current => {
-              const newProfiles = profiles.filter(p => p !== currentName);
-              let nextName = current[type].myAgentName;
-              if (nextName === currentName) nextName = newProfiles[0];
-              // Also clear drafts for deleted profile? Maybe safer to keep but unreachable unless added back.
-              return { ...current, [type]: { ...current[type], agentProfiles: newProfiles, myAgentName: nextName } };
-           });
-           this.statusMessage.set("ဖျက်ပြီးပါပြီ။");
-           setTimeout(() => this.statusMessage.set(""), 2000);
-      }
-  }
-
-  handleKeyboardEvents(event: KeyboardEvent) {
-    if (this.isPanicMode()) {
-       const key = event.key;
-       if (key === 'F9') {
-           this.isPanicMode.set(false);
-           return;
-       }
-       event.preventDefault();
-       if (/^[0-9]$/.test(key)) {
-           this.onPanicCalculatorInput(key);
-       } else if (['+', '-', '*', '/'].includes(key)) {
-           this.onPanicCalculatorInput(key);
-       } else if (key === 'Enter' || key === '=') {
-           this.onPanicCalculatorInput('=');
-       } else if (key === 'Backspace') {
-           this.panicInput.update(v => v.slice(0, -1));
-       } else if (key === 'Delete' || key.toLowerCase() === 'c') {
-           this.onPanicCalculatorInput('C');
-       } else if (key === 'Escape') {
-           this.panicInput.set('');
-       }
-       return; 
-    }
-
-    if (event.key === 'F9' || event.key === 'Escape') {
-       if (event.key === 'Escape') {
-           const now = Date.now();
-           if (now - this.lastEscTime < 300) {
-               this.activatePanicMode();
-           }
-           this.lastEscTime = now;
-       } else {
-           this.activatePanicMode();
-       }
-    }
-
-    if (this.showReports() || this.showUserGuide() || this.showSubmissionModal() || this.showPayoutModal() || this.showBetDetailModal() || this.isForwardingModalOpen() || this.showLimitManagementModal() || this.showVoucherSettings() || this.showRiskModal() || this.showChat()) return;
-    
-    const target = event.target as HTMLElement;
-    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) && target.id !== 'main-bet-input') return;
-
-    if (event.altKey) {
-      event.preventDefault();
-      switch (event.key.toLowerCase()) {
-        case 'c': this.clearAllBets(); break;
-        case 'z': this.undoLastBet(); break;
-        case 's': this.saveReport(); break;
-        case 'm': if (this.lotteryType() === '2D') this.setSession(this.session() === 'morning' ? 'evening' : 'morning'); break;
-        case '1': this.setActiveMode(this.modes[0]); break;
-        case '2': this.setActiveMode(this.modes[1]); break;
-        case '3': this.setActiveMode(this.modes[2]); break;
-        case 'b': this.backupData(); break;
-        case 'r': this.fileInput.nativeElement.click(); break;
-        case 'p': if (this.activeMode() !== 'အေးဂျင့်') this.openPayoutModal(); break;
-        case 'd': this.setLotteryType(this.lotteryType() === '2D' ? '3D' : '2D'); break;
-      }
-    }
-  }
-  private lastEscTime = 0;
-
-  // --- Panic Mode Logic ---
-  activatePanicMode() {
-      this.isPanicMode.set(true);
-      this.panicInput.set('');
-  }
-  
-  onPanicCalculatorInput(val: string) {
-      if (val === 'C') {
-          this.panicInput.set('');
-      } else if (val === '=') {
-          const currentInput = this.panicInput();
-          if (currentInput === '1234') {
-              this.isPanicMode.set(false);
-              this.panicInput.set('');
-          } else {
-              try {
-                  if (/^[0-9+\-*/.]+$/.test(currentInput)) {
-                      // eslint-disable-next-line no-new-func
-                      const result = new Function('return ' + currentInput)();
-                      this.panicInput.set(String(result));
-                  } else {
-                      throw new Error('Invalid input');
-                  }
-              } catch (e) {
-                  this.panicInput.set('Error');
-                  setTimeout(() => this.panicInput.set(''), 1000);
-              }
-          }
-      } else {
-          this.panicInput.update(v => v + val);
-      }
-  }
-
-  // --- Voice Logic ---
-  toggleVoiceInput() {
-      if (this.voiceService.isListening()) {
-          this.voiceService.stopListening();
-      } else {
-          this.voiceService.startListening((text, isFinal) => {
-              if (text.includes('ပြန်ဖျက်') || text.toLowerCase().includes('cancel')) {
-                  this.updateCurrentState('userInput', '');
-                  this.statusMessage.set('အသံဖြင့် ပြန်ဖျက်လိုက်ပါပြီ။');
-                  setTimeout(() => this.statusMessage.set(''), 2000);
-                  return;
-              }
-              if (text.includes('ထည့်မယ်') || text.toLowerCase().includes('save')) {
-                  this.addBetsFromInput();
-                  this.statusMessage.set('အသံဖြင့် သိမ်းဆည်းလိုက်ပါပြီ။');
-                  setTimeout(() => this.statusMessage.set(''), 2000);
-                  return;
-              }
-              this.updateCurrentState('userInput', text);
-          });
-      }
-  }
-
-  onBeforeUnload(event: BeforeUnloadEvent) {
-    if (this.betHistory().length > 0) {
-      event.preventDefault();
-      event.returnValue = true;
-    }
-  }
-
-  onInputKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      this.addBetsFromInput();
-    }
-  }
-
-  setLotteryType(type: LotteryType) { this.lotteryType.set(type); }
-  setActiveMode(mode: string): void { this.activeMode.set(mode); }
-  setSession(session: 'morning' | 'evening'): void {
-    this.appState.update(current => ({
-      ...current,
-      '2D': {
-        ...current['2D'],
-        session: session
-      }
-    }));
-  }
-  toggleReports(): void { this.showReports.update(v => !v); }
-  toggleHeatmap(): void { this.showHeatmap.update(v => !v); }
-  toggleChat(): void { this.showChat.update(v => !v); }
-
-  handleChatImport(data: {text: string, agentName: string}) {
-      const mode = this.activeMode();
-      
-      // Auto-register agent if not exists (for bookies)
-      if (mode === 'အလယ်ဒိုင်' || mode === 'ဒိုင်ကြီး') {
-          const currentAgentList = this.agents();
-          if (!currentAgentList.some(a => a.name === data.agentName)) {
-              if (mode === 'အလယ်ဒိုင်') {
-                  this.middleBookieAgents.update(a => [...a, { name: data.agentName, commission: 5 }]);
-              } else {
-                  this.mainBookieAgents.update(a => [...a, { name: data.agentName, commission: 5 }]);
-              }
-              this.statusMessage.set(`အေးဂျင့် '${data.agentName}' ကို အလိုအလျောက် စာရင်းသွင်းလိုက်သည်။`);
-          }
-      }
-
-      const bets = this.betParsingService.parseRaw(data.text, this.lotteryType());
-      if (bets.length > 0) {
-          if(this.addBetsToHistory(data.text, data.agentName)) {
-              this.statusMessage.set(`'${data.agentName}' ထံမှ စာရင်းများကို ဇယားသွင်းပြီးပါပြီ။`);
-              this.showChat.set(false); // Optionally close chat
-          }
-      } else {
-          this.statusMessage.set('ထည့်သွင်းရန် စာရင်းမှန်ကန်မှုမရှိပါ။');
-      }
-      setTimeout(() => this.statusMessage.set(''), 3000);
-  }
-
-  addBetsFromInput(): void {
-    const input = this.userInput().trim();
-    if (!input) return;
-
-    const source = this.activeMode() === 'အေးဂျင့်' ? this.bookieName() : 'Direct Input';
-    if (this.addBetsToHistory(input, source)) {
-      if (this.activeMode() === 'အေးဂျင့်') {
-        const type = this.lotteryType();
-        this.appState.update(current => {
-            const drafts = current[type].agentDrafts || {};
-            const agentList = drafts[source] || [];
-            
-            // Also clear the saved input for this agent since it's now submitted
-            const inputs = current[type].agentInputs || {};
-            const updatedInputs = { ...inputs, [source]: '' };
-
-            return {
-                ...current,
-                [type]: {
-                    ...current[type],
-                    agentDrafts: { ...drafts, [source]: [...agentList, input] },
-                    agentInputs: updatedInputs
-                }
-            };
-        });
-      }
-      this.updateCurrentState('userInput', '');
-    }
-  }
-
-  private addBetsToHistory(input: string, source: string): boolean {
-    const parsedBets = this.betParsingService.parseRaw(input, this.lotteryType());
-    if (parsedBets.length === 0) return false;
-
-    const newEntry: HistoryEntry = { 
-        id: crypto.randomUUID(), 
-        input, 
-        source,
-        mode: this.activeMode() 
-    };
-    
-    const type = this.lotteryType();
-    this.appState.update(current => ({
-      ...current,
-      [type]: {
-        ...current[type],
-        betHistory: [...current[type].betHistory, newEntry]
-      }
-    }));
-    return true;
-  }
-  
-  clearAllBets(): void {
-    if (this.recentHistory().length === 0) {
-      this.statusMessage.set('ဖျက်ရန် စာရင်းများမရှိသေးပါ။');
-      setTimeout(() => this.statusMessage.set(''), 3000);
-      return;
-    }
-    this.showClearAllConfirmation.set(true);
-  }
-
-  confirmClearAll(): void {
-    const type = this.lotteryType();
-    const currentMode = this.activeMode();
-    const currentAgentName = this.bookieName();
-
-    this.appState.update(current => {
-      const currentHistory = current[type].betHistory;
-      const retainedHistory = currentHistory.filter(h => {
-          const entryMode = h.mode || 'ဒိုင်ကြီး';
-          
-          if (currentMode === 'အေးဂျင့်') {
-              // Critical Fix: If in Agent Mode, ONLY clear records where source matches current profile.
-              // Keep records if they belong to a different profile, even if mode is 'Agent'.
-              if (entryMode === currentMode && h.source === currentAgentName) {
-                  return false; // Delete this
-              }
-              return true; // Keep others
-          }
-          
-          // For Bookie modes, clear everything in that mode
-          return entryMode !== currentMode;
-      });
-      
-      let newDrafts = current[type].agentDrafts || {};
-      let newInputs = current[type].agentInputs || {};
-      
-      if (currentMode === 'အေးဂျင့်') {
-          newDrafts = { ...newDrafts, [currentAgentName]: [] };
-          newInputs = { ...newInputs, [currentAgentName]: '' };
-      }
-
-      // Clear individual limits if operating as a Bookie (Middle or Main)
-      // FIX: Only clear the limits relevant to the active mode
-      let individualLimitsMain = current[type].individualLimitsMain;
-      let individualLimitsMiddle = current[type].individualLimitsMiddle;
-      let groupLimitsMain = current[type].groupLimitsMain;
-      let groupLimitsMiddle = current[type].groupLimitsMiddle;
-      
-      if (currentMode === 'အလယ်ဒိုင်') {
-          individualLimitsMiddle = new Map<string, number>();
-          groupLimitsMiddle = new Map<string, number>();
-      } else if (currentMode === 'ဒိုင်ကြီး') {
-          individualLimitsMain = new Map<string, number>();
-          groupLimitsMain = new Map<string, number>();
-      }
-
-      return {
-        ...current,
-        [type]: {
-          ...current[type],
-          betHistory: retainedHistory,
-          userInput: '',
-          agentDrafts: newDrafts,
-          agentInputs: newInputs,
-          individualLimitsMain,
-          individualLimitsMiddle,
-          groupLimitsMain,
-          groupLimitsMiddle
-        }
-      };
-    });
-
-    this.inboxInput.set('');
-    this.confirmationMessage.set('');
-    this.submissionText.set('');
-    
-    if (currentMode === 'အလယ်ဒိုင်' || currentMode === 'ဒိုင်ကြီး') {
-        this.acceptedSubmissions.set([]);
-        this.acknowledgedOverLimits.set(new Map());
-        this.rejectedOverLimits.set(new Set());
-        this.acknowledgedHeldOverLimits.set(new Map());
-    }
-
-    this.showClearAllConfirmation.set(false);
-    this.profitOptimizerSuggestion.set(null);
-    this.lastInboxResult.set(null);
-    this.statusMessage.set('စာရင်းများကို အောင်မြင်စွာ ဖျက်လိုက်ပါပြီ။');
-    setTimeout(() => this.statusMessage.set(''), 3000);
-  }
-
-  undoLastBet(): void {
-    const type = this.lotteryType();
-    const currentMode = this.activeMode();
-    const currentAgentName = this.bookieName();
-    const history = this.appState()[type].betHistory;
-    
-    let indexToRemove = -1;
-    for (let i = history.length - 1; i >= 0; i--) {
-        const h = history[i];
-        const entryMode = h.mode || 'ဒိုင်ကြီး';
-        
-        if (entryMode === currentMode) {
-            // Critical Fix: Agent undo scope
-            if (currentMode === 'အေးဂျင့်' && h.source !== currentAgentName) {
-                continue; // Skip other profiles
-            }
-            indexToRemove = i;
-            break;
-        }
-    }
-
-    if (indexToRemove === -1) return;
-    
-    const entryToDelete = history[indexToRemove];
-    const newHistory = [...history];
-    newHistory.splice(indexToRemove, 1);
-
-    this.appState.update(current => {
-        let newDrafts = current[type].agentDrafts || {};
-        
-        if (currentMode === 'အေးဂျင့်' && entryToDelete.source === currentAgentName) {
-            const agentList = newDrafts[currentAgentName] || [];
-            const index = agentList.lastIndexOf(entryToDelete.input);
-            if (index > -1) {
-                const newList = [...agentList];
-                newList.splice(index, 1);
-                newDrafts = { ...newDrafts, [currentAgentName]: newList };
-            }
-        }
-
-        return {
-            ...current,
-            [type]: {
-                ...current[type],
-                betHistory: newHistory,
-                agentDrafts: newDrafts
-            }
-        };
-    });
-  }
-
-  deleteHistoryEntry(idToDelete: string): void {
-    const type = this.lotteryType();
-    const entryToDelete = this.betHistory().find(h => h.id === idToDelete);
-    if (!entryToDelete) return;
-
-    this.appState.update(current => {
-        const newHistory = current[type].betHistory.filter(e => e.id !== idToDelete);
-        let newDrafts = current[type].agentDrafts || {};
-
-        if (this.activeMode() === 'အေးဂျင့်' && entryToDelete.source === this.bookieName()) {
-            const agentName = this.bookieName();
-            const agentList = newDrafts[agentName] || [];
-            const index = agentList.indexOf(entryToDelete.input); // Remove the specific matching input string
-            if (index > -1) {
-                const newList = [...agentList];
-                newList.splice(index, 1);
-                newDrafts = { ...newDrafts, [agentName]: newList };
-            }
-        }
-
-        return {
-            ...current,
-            [type]: {
-                ...current[type],
-                betHistory: newHistory,
-                agentDrafts: newDrafts
-            }
-        };
-    });
-  }
-
-  editHistoryEntry(entryToEdit: HistoryEntry): void {
-    this.updateCurrentState('userInput', entryToEdit.input);
-    this.deleteHistoryEntry(entryToEdit.id);
-    this.mainBetInput.nativeElement.focus();
-  }
-
-  addAgent() {
-    const name = this.newAgentName().trim();
-    const commission = this.newAgentCommission();
-    const mode = this.activeMode();
-
-    if (name && commission >= 0) {
-        if (mode === 'အလယ်ဒိုင်') {
-            if (!this.middleBookieAgents().some(a => a.name === name)) {
-                this.middleBookieAgents.update(a => [...a, { name, commission }]);
-                this.newAgentName.set('');
-            }
-        } else if (mode === 'ဒိုင်ကြီး') {
-            if (!this.mainBookieAgents().some(a => a.name === name)) {
-                this.mainBookieAgents.update(a => [...a, { name, commission }]);
-                this.newAgentName.set('');
-            }
-        }
-    }
-  }
-
-  removeAgent(agentNameToRemove: string) { 
-      const mode = this.activeMode();
-      if (mode === 'အလယ်ဒိုင်') {
-          this.middleBookieAgents.update(a => a.filter(agent => agent.name !== agentNameToRemove));
-      } else if (mode === 'ဒိုင်ကြီး') {
-          this.mainBookieAgents.update(a => a.filter(agent => agent.name !== agentNameToRemove));
-      }
-  }
-  
-  addUpperBookie() {
-    const name = this.newUpperBookieName().trim();
-    const commission = this.newUpperBookieCommission();
-    if (name && commission >= 0 && !this.upperBookies().some(b => b.name === name)) {
-      this.upperBookies.update(b => [...b, { name, commission }]);
-      this.newUpperBookieName.set('');
-    }
-  }
-  removeUpperBookie(bookieNameToRemove: string) { this.upperBookies.update(b => b.filter(bookie => bookie.name !== bookieNameToRemove)); }
-  
-  addAgentUpperBookie() {
-    const name = this.newAgentUpperBookieName().trim();
-    if (name && !this.agentUpperBookies().some(b => b.name === name)) {
-      this.agentUpperBookies.update(b => [...b, { name }]);
-      this.newAgentUpperBookieName.set('');
-    }
-  }
-  removeAgentUpperBookie(bookieNameToRemove: string) { this.agentUpperBookies.update(b => b.filter(bookie => bookie.name !== bookieNameToRemove)); }
-
-  // --- Limit Management ---
-  openLimitModal(number: string | null = null) {
-    if (this.activeMode() === 'အေးဂျင့်') return;
-    this.showCustomLimitsDropdown.set(false); // Close dropdown if opening modal
-    this.limitManageNumber.set(number || '');
-    
-    // Check if this number has a specific override first
-    let currentLimit = this.defaultLimit();
-    if (number) {
-        if (this.effectiveLimits().has(number)) {
-            currentLimit = this.effectiveLimits().get(number)!;
-        }
-    }
-    
-    this.limitManageAmount.set(currentLimit);
-    this.showLimitManagementModal.set(true);
-  }
-
-  saveIndividualLimit() {
-    const inputRaw = this.limitManageNumber().trim();
-    const limit = this.limitManageAmount();
-    const mode = this.activeMode();
-    const type = this.lotteryType();
-    
-    if (limit < 0 || isNaN(limit)) {
-         this.statusMessage.set('ပမာဏ မမှန်ကန်ပါ။');
-         return;
-    }
-
-    // Case 1: Default Limit (Input is empty)
-    if (!inputRaw) {
-        this.appState.update(current => {
-            const newState = { ...current[type] };
-            if (mode === 'အလယ်ဒိုင်') {
-                newState.defaultLimitMiddle = limit;
-            } else {
-                newState.defaultLimitMain = limit;
-            }
-            return { ...current, [type]: newState };
-        });
-        
-        this.limitManageNumber.set('');
-        this.limitManageAmount.set(limit); // Update UI to reflect new default
-        this.statusMessage.set('Default လစ်မစ်သတ်မှတ်ပြီးပါပြီ။');
-        setTimeout(() => this.statusMessage.set(''), 2000);
-        return;
-    }
-
-    // Case 2: Individual/Batch Limit via Parsing Service
-    const parsedTargets = this.betParsingService.parseRaw(`${inputRaw} 1`, type);
-
-    if (parsedTargets.length === 0) {
-         this.statusMessage.set('ဂဏန်း သို့မဟုတ် အခေါ်အဝေါ် မှားယွင်းနေပါသည်။');
-         setTimeout(() => this.statusMessage.set(''), 3000);
-         return;
-    }
-
-    this.appState.update(current => {
-        const currentState = current[type];
-        
-        let individualLimits: Map<string, number>;
-        let groupLimits: Map<string, number>;
-
-        if (mode === 'အလယ်ဒိုင်') {
-            individualLimits = new Map(currentState.individualLimitsMiddle);
-            groupLimits = new Map(currentState.groupLimitsMiddle);
-        } else {
-            individualLimits = new Map(currentState.individualLimitsMain);
-            groupLimits = new Map(currentState.groupLimitsMain);
-        }
-
-        // Logic: If input expands to multiple numbers (e.g. "1a", "nk"), save as a GROUP rule.
-        // Also clear any individual overrides for these numbers so the group rule takes effect cleanly.
-        if (parsedTargets.length > 1) {
-            groupLimits.set(inputRaw, limit);
-            
-            // Cleanup individual overrides for items in this group
-            parsedTargets.forEach(target => {
-                individualLimits.delete(target.number);
-            });
-        } else {
-            // Single Number Override
-            individualLimits.set(parsedTargets[0].number, limit);
-        }
-
-        const newState = { ...currentState };
-        if (mode === 'အလယ်ဒိုင်') {
-            newState.individualLimitsMiddle = individualLimits;
-            newState.groupLimitsMiddle = groupLimits;
-        } else {
-            newState.individualLimitsMain = individualLimits;
-            newState.groupLimitsMain = groupLimits;
-        }
-
-        return { ...current, [type]: newState };
-    });
-
-    this.showLimitManagementModal.set(false);
-    this.limitManageNumber.set('');
-    
-    // Feedback based on count
-    if (parsedTargets.length > 1) {
-        this.statusMessage.set(`'${inputRaw}' အတွက် Group Limit (${limit}) သတ်မှတ်ပြီးပါပြီ။`);
-    } else {
-        this.statusMessage.set(`ဂဏန်း ${parsedTargets[0].number} အတွက် လစ်မစ်သတ်မှတ်ပြီးပါပြီ။`);
-    }
-    setTimeout(() => this.statusMessage.set(''), 3000);
-  }
-
-  // Called from the Dropdown list 'x' button
-  removeIndividualLimit(key: string) {
-      const type = this.lotteryType();
-      const mode = this.activeMode();
-      this.appState.update(current => {
-        const currentState = current[type];
-        let individualLimits: Map<string, number>;
-        let groupLimits: Map<string, number>;
-        
-        if (mode === 'အလယ်ဒိုင်') {
-            individualLimits = new Map(currentState.individualLimitsMiddle);
-            groupLimits = new Map(currentState.groupLimitsMiddle);
-        } else {
-            individualLimits = new Map(currentState.individualLimitsMain);
-            groupLimits = new Map(currentState.groupLimitsMain);
-        }
-
-        // Check if it's a group key or individual key
-        if (groupLimits.has(key)) {
-            groupLimits.delete(key);
-        } else {
-            individualLimits.delete(key);
-        }
-
-        const newState = { ...currentState };
-        if (mode === 'အလယ်ဒိုင်') {
-            newState.individualLimitsMiddle = individualLimits;
-            newState.groupLimitsMiddle = groupLimits;
-        } else {
-            newState.individualLimitsMain = individualLimits;
-            newState.groupLimitsMain = groupLimits;
-        }
-        return { ...current, [type]: newState };
-      });
-      
-      if (this.limitManageNumber() === key) {
-          this.showLimitManagementModal.set(false);
-      }
-  }
-  
-  // Called from the Modal 'Reset' button - Handles Batch Removal by Key
-  removeBatchLimits() {
-      const inputRaw = this.limitManageNumber().trim();
-      if (!inputRaw) return;
-      this.removeIndividualLimit(inputRaw);
-      this.statusMessage.set(`'${inputRaw}' လစ်မစ်ကို ဖျက်ပြီးပါပြီ။`);
-      setTimeout(() => this.statusMessage.set(''), 2000);
-  }
-  
-  // New Feature: Apply Batch Changes to Existing Custom Limits
-  applyBatchLimitChange(operation: 'add' | 'sub' | 'set') {
-      const val = this.batchLimitAmount();
-      if ((val < 0 && operation !== 'set') || isNaN(val)) {
-          this.statusMessage.set('ပမာဏ မမှန်ကန်ပါ။');
+      const bets = this.betParsingService.parseRaw(input, this.lotteryType());
+      if (bets.length === 0) {
+          this.statusMessage.set('စာရင်းပုံစံမှားယွင်းနေပါသည်');
           setTimeout(() => this.statusMessage.set(''), 2000);
           return;
       }
 
-      const type = this.lotteryType();
-      const mode = this.activeMode();
-
-      this.appState.update(current => {
-          const currentState = current[type];
-          
-          let individualLimits: Map<string, number>;
-          let groupLimits: Map<string, number>;
-
-          if (mode === 'အလယ်ဒိုင်') {
-              individualLimits = new Map(currentState.individualLimitsMiddle);
-              groupLimits = new Map(currentState.groupLimitsMiddle);
-          } else {
-              individualLimits = new Map(currentState.individualLimitsMain);
-              groupLimits = new Map(currentState.groupLimitsMain);
-          }
-
-          if (individualLimits.size === 0 && groupLimits.size === 0) {
-              this.statusMessage.set('ပြင်ဆင်ရန် သီးသန့်လစ်မစ်များ မရှိသေးပါ။');
-              setTimeout(() => this.statusMessage.set(''), 2000);
-              return current; 
-          }
-
-          // Helper to update a map
-          const updateMap = (map: Map<string, number>) => {
-              map.forEach((currentLimit, key) => {
-                  let newLimit = currentLimit;
-                  if (operation === 'add') newLimit += val;
-                  else if (operation === 'sub') newLimit = Math.max(0, newLimit - val);
-                  else if (operation === 'set') newLimit = val;
-                  map.set(key, newLimit);
-              });
-          };
-
-          updateMap(individualLimits);
-          updateMap(groupLimits);
-
-          const newState = { ...currentState };
-          if (mode === 'အလယ်ဒိုင်') {
-              newState.individualLimitsMiddle = individualLimits;
-              newState.groupLimitsMiddle = groupLimits;
-          } else {
-              newState.individualLimitsMain = individualLimits;
-              newState.groupLimitsMain = groupLimits;
-          }
-
-          return { ...current, [type]: newState };
-      });
-      
-      if (operation === 'add') this.statusMessage.set(`ရှိပြီးသား လစ်မစ်အားလုံးကို ${val} ထပ်ပေါင်းလိုက်ပါပြီ။`);
-      else if (operation === 'sub') this.statusMessage.set(`ရှိပြီးသား လစ်မစ်အားလုံးမှ ${val} နှုတ်လိုက်ပါပြီ။`);
-      else if (operation === 'set') this.statusMessage.set(`ရှိပြီးသား လစ်မစ်အားလုံးကို ${val} သို့ ပြောင်းလိုက်ပါပြီ။`);
-      
-      setTimeout(() => this.statusMessage.set(''), 3000);
-      this.batchLimitAmount.set(0);
+      this.processNewBets(bets, 'Direct', input);
+      this.userInput.set('');
   }
 
-  clearAllCustomLimits() {
-      if(!confirm("သီးသန့်လစ်မစ် အားလုံးကို ဖျက်ရန် သေချာပါသလား? (Default Limit အတိုင်း ပြန်ဖြစ်သွားပါမည်)")) return;
+  processNewBets(bets: RawBet[], source: string, rawInput: string) {
+      const newEntry: HistoryEntry = {
+          id: Date.now().toString(),
+          input: rawInput,
+          timestamp: Date.now(),
+          bets: bets.map(b => ({
+              id: Math.random().toString(36).substr(2, 9),
+              amount: b.amount,
+              source: source,
+              historyEntryId: Date.now().toString(),
+              number: b.number // Storing number explicitly for aggregation
+          } as any))
+      };
 
-      const type = this.lotteryType();
-      const mode = this.activeMode();
-
-      this.appState.update(current => {
-          const newState = { ...current[type] };
-          if (mode === 'အလယ်ဒိုင်') {
-              newState.individualLimitsMiddle = new Map();
-              newState.groupLimitsMiddle = new Map();
-          } else {
-              newState.individualLimitsMain = new Map();
-              newState.groupLimitsMain = new Map();
-          }
-          return { ...current, [type]: newState };
-      });
-      
-      this.statusMessage.set("သီးသန့်လစ်မစ် အားလုံးကို ဖျက်ပြီးပါပြီ။");
-      setTimeout(() => this.statusMessage.set(''), 2000);
-  }
-  
-  toggleCustomLimitsDropdown() {
-      this.showCustomLimitsDropdown.update(v => !v);
-  }
-
-  closeLimitModal() {
-    this.showLimitManagementModal.set(false);
-    this.limitManageNumber.set('');
-  }
-
-  addBetsFromInbox(): void {
-    let input = this.inboxInput().trim();
-    if (!input) return;
-    
-    let agentName: string | null = this.selectedAgentForInbox();
-    let betContent = input;
-
-    const lines = input.split(/\r?\n/);
-    const firstLine = lines[0].trim();
-    
-    const dashMatch = firstLine.match(/^---\s*(.+?)\s*---$/);
-    const colonMatch = firstLine.match(/^(?:Agent\s*:\s*)?([^:]+)$/i);
-    
-    let potentialName = '';
-    if (dashMatch) {
-      potentialName = dashMatch[1].trim();
-    } else if (colonMatch) {
-        if (!firstLine.includes('=') && !/^\d+\s+\d+/.test(firstLine)) {
-            potentialName = firstLine.replace(/^Agent\s*:\s*/i, '').trim();
-        }
-    }
-
-    if (potentialName) {
-      if (this.agents().some(a => a.name === potentialName)) {
-          agentName = potentialName;
-          this.selectedAgentForInbox.set(potentialName);
-      } 
-      else if (!agentName && potentialName.length < 20) {
-          agentName = potentialName;
-          this.selectedAgentForInbox.set(potentialName);
-      }
-    }
-    
-    if (!agentName) {
-        this.statusMessage.set('ကျေးဇူးပြု၍ Agent ကို ရွေးချယ်ပါ သို့မဟုတ် စာရင်းတွင် Agent အမည် ထည့်သွင်းပါ။');
-        setTimeout(() => this.statusMessage.set(''), 3000);
-        return;
-    }
-    
-    const finalAgentName = agentName as string;
-
-    if (finalAgentName) {
-        const escapedName = finalAgentName.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-        const headerRegex = new RegExp(`^\\s*(?:---|Agent\\s*:)?\\s*${escapedName}\\s*(?:---)?\\s*(?:\\r?\\n|$)`, 'i');
-        
-        if (headerRegex.test(betContent)) {
-            betContent = betContent.replace(headerRegex, '').trim();
-        }
-    }
-
-    const currentMode = this.activeMode();
-    const currentAgentList = this.agents();
-    
-    if (!currentAgentList.some(a => a.name === finalAgentName)) {
-      if (currentMode === 'အလယ်ဒိုင်') {
-          this.middleBookieAgents.update(a => [...a, { name: finalAgentName, commission: 5 }]);
-      } else if (currentMode === 'ဒိုင်ကြီး') {
-          this.mainBookieAgents.update(a => [...a, { name: finalAgentName, commission: 5 }]);
-      }
-      this.statusMessage.set(`အေးဂျင့် '${finalAgentName}' ကို အလိုအလျောက် စာရင်းသွင်းလိုက်သည်။`);
-    }
-    
-    const rawBets = this.betParsingService.parseRaw(betContent, this.lotteryType());
-    
-    if (rawBets.length === 0) {
-        if (betContent.length > 20) {
-            this.statusMessage.set('Format တွေ့သော်လည်း စာရင်းများမတွေ့ပါ။ 2D/3D Mode မှန်ကန်ကြောင်း စစ်ဆေးပါ။');
-        } else {
-            this.statusMessage.set('ထည့်သွင်းရန် မှန်ကန်သောစာရင်းများ မတွေ့ရှိပါ။');
-        }
-        setTimeout(() => this.statusMessage.set(''), 4000);
-        return;
-    }
-    
-    const safeBets: Bet[] = [];
-    const overLimitBets: Bet[] = [];
-    const currentData = this.lotteryData();
-    const currentEffectiveLimits = this.effectiveLimits();
-    const currentDefLimit = this.defaultLimit();
-
-    const tempCurrentDataMap = new Map<string, number>();
-    currentData.forEach((bets, number) => {
-        const total = bets.reduce((sum, b) => sum + b.amount, 0);
-        tempCurrentDataMap.set(number, total);
-    });
-
-    rawBets.forEach(bet => {
-        const number = bet.number;
-        const amount = bet.amount;
-        
-        const existingAmount = tempCurrentDataMap.get(number) || 0;
-        const limit = currentEffectiveLimits.get(number) ?? currentDefLimit;
-        
-        if (existingAmount >= limit) {
-            overLimitBets.push({ number, amount });
-        } else if (existingAmount + amount > limit) {
-            const safeAmount = limit - existingAmount;
-            const rejectedAmount = amount - safeAmount;
-            
-            if (safeAmount > 0) {
-                safeBets.push({ number, amount: safeAmount });
-            }
-            if (rejectedAmount > 0) {
-                overLimitBets.push({ number, amount: rejectedAmount });
-            }
-            tempCurrentDataMap.set(number, limit);
-        } else {
-            safeBets.push({ number, amount });
-            tempCurrentDataMap.set(number, existingAmount + amount);
-        }
-    });
-
-    if (overLimitBets.length > 0) {
-        this.pendingInboxConfirmation.set({
-            safeBets,
-            overLimitBets,
-            agent: finalAgentName,
-            originalInput: betContent
-        });
-    } else {
-        if (this.addBetsToHistory(betContent, finalAgentName)) {
-            const totalAmount = rawBets.reduce((sum, b) => sum + b.amount, 0);
-            this.acceptedSubmissions.update(s => [...s, { agent: finalAgentName, content: betContent, timestamp: new Date(), total: totalAmount }]);
-            this.inboxInput.set('');
-            
-            this.lastInboxResult.set({
-                agent: finalAgentName,
-                totalAccepted: totalAmount,
-                isAllAccepted: true
-            });
-            
-            this.statusMessage.set(`'${finalAgentName}' ၏ စာရင်းကို အောင်မြင်စွာ လက်ခံပြီးပါပြီ။`);
-            setTimeout(() => this.statusMessage.set(''), 3000);
-        }
-    }
-  }
-
-  acceptAllFromInbox(): void {
-    const confirmation = this.pendingInboxConfirmation();
-    if (!confirmation) return;
-
-    if (this.addBetsToHistory(confirmation.originalInput, confirmation.agent)) {
-      const totalAmount = [...confirmation.safeBets, ...confirmation.overLimitBets].reduce((sum: number, b: Bet) => sum + b.amount, 0);
-      this.acceptedSubmissions.update(s => [...s, { agent: confirmation.agent, content: confirmation.originalInput, timestamp: new Date(), total: totalAmount }]);
-      this.inboxInput.set('');
-      
-      this.lastInboxResult.set({
-         agent: confirmation.agent,
-         totalAccepted: totalAmount,
-         isAllAccepted: true
-      });
-
-      this.statusMessage.set(`'${confirmation.agent}' ၏ စာရင်းအားလုံးကို အောင်မြင်စွာ လက်ခံပြီးပါပြီ။`);
-      setTimeout(() => this.statusMessage.set(''), 3000);
-    }
-    this.cancelInboxConfirmation();
-  }
-
-  acceptSafeOnlyFromInbox(): void {
-    const confirmation = this.pendingInboxConfirmation();
-    if (!confirmation) return;
-
-    const safeBetsString = confirmation.safeBets.map(b => `${b.number} ${b.amount}`).join('\n');
-    let safeTotal = 0;
-
-    if (safeBetsString) {
-        if (this.addBetsToHistory(safeBetsString, confirmation.agent)) {
-            safeTotal = confirmation.safeBets.reduce((sum: number, b: Bet) => sum + b.amount, 0);
-            this.acceptedSubmissions.update(s => [...s, { agent: confirmation.agent, content: safeBetsString, timestamp: new Date(), total: safeTotal }]);
-        }
-    }
-
-    const overLimitText = confirmation.overLimitBets.map(b => `${b.number}=${b.amount}`).join(', ');
-    
-    this.lastInboxResult.set({
-        agent: confirmation.agent,
-        totalAccepted: safeTotal,
-        rejectedText: overLimitText,
-        isAllAccepted: false
-    });
-
-    if (safeTotal > 0) {
-        this.statusMessage.set('လစ်မစ်အတွင်း စာရင်းများကိုသာ လက်ခံပြီးပါပြီ။');
-    } else {
-        this.statusMessage.set('စာရင်းအားလုံး လစ်မစ်ကျော်နေသဖြင့် ပယ်ဖျက်လိုက်ပါသည်။ (Reply Voucher တွင် ကြည့်ပါ)');
-    }
-    
-    setTimeout(() => this.statusMessage.set(''), 4000);
-
-    this.inboxInput.set('');
-    this.cancelInboxConfirmation();
-  }
-
-  cancelInboxConfirmation(): void {
-    this.pendingInboxConfirmation.set(null);
-    this.confirmationMessage.set('');
-  }
-  
-  closeInboxResult(): void {
-      this.lastInboxResult.set(null);
-  }
-  
-  copyInboxReply(): void {
-      this.copyToClipboard(this.inboxReplyText());
-      this.statusMessage.set('Reply Voucher ကို ကူးယူပြီးပါပြီ။');
+      this.history.update(h => [newEntry, ...h]);
+      this.saveToStorage();
+      this.statusMessage.set('စာရင်းသွင်းပြီးပါပြီ');
       setTimeout(() => this.statusMessage.set(''), 2000);
   }
 
-  openSubmissionModal() {
-    if (this.pendingSubmissions().length === 0) return;
-    
-    const allBets: { number: string; amount: number }[] = [];
-    const pending = this.pendingSubmissions();
-    
-    for (const input of pending) {
-        const bets = this.betParsingService.parseRaw(input, this.lotteryType());
-        allBets.push(...bets);
-    }
-
-    const today = new Date().toLocaleDateString('en-CA');
-    let dateLine = `နေ့စွဲ: ${this.lotteryType() === '3D' ? this.formatDate(this.drawDate()) : today}`;
-    if (this.lotteryType() === '2D') {
-        const sessionText = this.session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း';
-        dateLine += ` (${sessionText})`;
-    }
-
-    const header = `--- ${this.bookieName()} ---`;
-    const separator = '--------------------';
-    
-    const body = allBets.map(b => `${b.number} = ${b.amount}`).join('\n');
-    const totalAmount = allBets.reduce((sum, b) => sum + b.amount, 0);
-    const count = allBets.length;
-
-    const footer = `စုစုပေါင်း (${count}) ကွက်: ${totalAmount.toLocaleString()} ${this.currencySymbol()}`;
-
-    const formattedText = `${header}\n${dateLine}\n${separator}\n${body}\n${separator}\n${footer}`;
-
-    this.submissionText.set(formattedText);
-    this.showSubmissionModal.set(true);
+  undoLastBet() {
+      this.history.update(h => h.slice(1));
+      this.saveToStorage();
+      this.sanitizeOverLimitMaps(); // Fix: Sanitize maps after undo
   }
 
-  copySubmissionText() {
-    this.copyToClipboard(this.submissionText());
-    this.statusMessage.set('စာရင်းကို Copy ကူးပြီးပါပြီ။');
-    setTimeout(() => this.statusMessage.set(''), 3000);
+  clearAllBets() {
+      this.showClearAllConfirmation.set(true);
   }
 
-  finishBatch() {
-    this.copyToClipboard(this.submissionText());
-    this.clearSubmissions(); // Re-use clear logic which now targets specific agent
-    this.showSubmissionModal.set(false);
-    this.statusMessage.set(`'${this.bookieName()}' အတွက် စာရင်းပို့ပြီးပါပြီ။ နောက်တစ်သုတ် စတင်နိုင်ပါပြီ။`);
-    setTimeout(() => this.statusMessage.set(''), 4000);
+  confirmClearAll() {
+      this.history.set([]);
+      this.acknowledgedOverLimits.set(new Map());
+      this.heldOverLimits.set(new Map());
+      this.saveToStorage();
+      this.showClearAllConfirmation.set(false);
   }
   
-  clearSubmissions() {
-    const type = this.lotteryType();
-    const currentName = this.bookieName();
-    this.appState.update(current => {
-        const drafts = current[type].agentDrafts || {};
-        return {
-            ...current,
-            [type]: {
-                ...current[type],
-                agentDrafts: { ...drafts, [currentName]: [] }
-            }
-        };
-    });
+  editHistoryEntry(entry: HistoryEntry) {
+      // Implement basic edit: load into input, delete old
+      this.userInput.set(entry.input);
+      this.deleteHistoryEntry(entry.id);
   }
   
-  openPayoutModal() { this.showPayoutModal.set(true); this.payoutDetails.set(null); this.winningNumber.set(''); }
-  
-  calculatePayout() {
-    const num = this.winningNumber().trim();
-    const type = this.lotteryType();
-    const requiredLength = type === '2D' ? 2 : 3;
-
-    if (num.length !== requiredLength || isNaN(parseInt(num))) { alert(`ကျေးဇူးပြု၍ ဂဏန်း ${requiredLength} လုံးကို မှန်ကန်စွာထည့်ပါ။`); return; }
-    
-    const currentEffectiveLimits = this.effectiveLimits();
-    const currentDefLimit = this.defaultLimit();
-    const limit = currentEffectiveLimits.get(num) ?? currentDefLimit;
-
-    const cell = (type === '2D' ? this.gridCells() : this.listItems()).find(c => c.number === num);
-    const winningBetsBreakdown = cell ? cell.breakdown : [];
-    
-    const totalBet = cell ? cell.amount : 0;
-    const totalOverLimitBet = cell ? cell.overLimitAmount : 0;
-    const totalHeldBet = totalBet - totalOverLimitBet;
-    
-    const totalHeldPayout = totalHeldBet * this.payoutRate();
-    const totalOverLimitPayout = totalOverLimitBet * this.payoutRate();
-    
-    const history = this.betHistory();
-    const historyIndexMap = new Map<string, number>();
-    history.forEach((h, i) => historyIndexMap.set(h.id, i));
-
-    const sortedBets = [...winningBetsBreakdown].sort((a, b) => {
-        const idxA = historyIndexMap.get(a.historyEntryId) ?? Infinity;
-        const idxB = historyIndexMap.get(b.historyEntryId) ?? Infinity;
-        return idxA - idxB;
-    });
-
-    const sourceHeldMap = new Map<string, number>();
-    const sourceTotalMap = new Map<string, number>(); // For reference/debug if needed
-    const sourceWinBetsMap = new Map<string, number[]>();
-
-    let currentTotalHeld = 0;
-
-    sortedBets.forEach(bet => {
-        const remainingCapacity = Math.max(0, limit - currentTotalHeld);
-        let heldPortion = 0;
-
-        if (remainingCapacity > 0) {
-            heldPortion = Math.min(bet.amount, remainingCapacity);
-            currentTotalHeld += heldPortion;
-        }
-        
-        if (heldPortion > 0) {
-            sourceHeldMap.set(bet.source, (sourceHeldMap.get(bet.source) || 0) + heldPortion);
-        }
-        
-        sourceTotalMap.set(bet.source, (sourceTotalMap.get(bet.source) || 0) + bet.amount);
-        
-        const list = sourceWinBetsMap.get(bet.source) || [];
-        list.push(bet.amount);
-        sourceWinBetsMap.set(bet.source, list);
-    });
-
-    const agentPerformance = this.agentsWithPerformance();
-    const agentSalesMap = new Map<string, number>();
-    agentPerformance.forEach(a => agentSalesMap.set(a.name, a.totalSales));
-
-    const knownAgentNames = new Set(this.agents().map(a => a.name));
-    
-    const agentPayouts: AgentPayoutInfo[] = [];
-    const otherPayouts: AgentPayoutInfo[] = [];
-
-    this.agents().forEach(agent => {
-        const totalSales = agentSalesMap.get(agent.name) || 0;
-        // Check if agent has sales OR has any winning bets (even if rejected/over limit, they are in the breakdown)
-        if (totalSales > 0 || sourceWinBetsMap.has(agent.name)) {
-            const heldWinBetAmount = sourceHeldMap.get(agent.name) || 0;
-            const payout = heldWinBetAmount * this.payoutRate();
-            
-            const totalWinBetAmount = sourceTotalMap.get(agent.name) || 0;
-            const totalWinAmount = totalWinBetAmount * this.payoutRate();
-
-            const overLimitWinBetAmount = totalWinBetAmount - heldWinBetAmount;
-            const overLimitWinAmount = overLimitWinBetAmount * this.payoutRate();
-
-            const commissionRate = agent.commission;
-            const commissionAmount = totalSales * (commissionRate / 100);
-            const netSales = totalSales - commissionAmount;
-            
-            // Critical Fix: Deduct Total Win Amount (Held + OverLimit) from Balance
-            // Agent gets paid for EVERYTHING accepted.
-            const finalBalance = netSales - totalWinAmount; 
-
-            agentPayouts.push({
-                name: agent.name,
-                totalSales,
-                commissionRate,
-                commissionAmount,
-                netSales,
-                
-                totalWinBetAmount,
-                totalWinAmount,
-                overLimitWinBetAmount,
-                overLimitWinAmount,
-                heldWinBetAmount,
-                payout, 
-                
-                finalBalance,
-                individualBets: sourceWinBetsMap.get(agent.name) || []
-            });
-        }
-    });
-
-    const nonAgentSalesMap = new Map<string, number>();
-    this.lotteryData().forEach(bets => {
-        bets.forEach(bet => {
-            if (!knownAgentNames.has(bet.source)) {
-                 nonAgentSalesMap.set(bet.source, (nonAgentSalesMap.get(bet.source) || 0) + bet.amount);
-            }
-        });
-    });
-
-    nonAgentSalesMap.forEach((totalSales, source) => {
-        if (knownAgentNames.has(source)) return;
-
-        const heldWinBetAmount = sourceHeldMap.get(source) || 0;
-        const payout = heldWinBetAmount * this.payoutRate();
-        
-        const totalWinBetAmount = sourceTotalMap.get(source) || 0;
-        const totalWinAmount = totalWinBetAmount * this.payoutRate();
-
-        const overLimitWinBetAmount = totalWinBetAmount - heldWinBetAmount;
-        const overLimitWinAmount = overLimitWinBetAmount * this.payoutRate();
-        
-        const commissionRate = 0; 
-        const commissionAmount = 0;
-        const netSales = totalSales;
-        
-        // Critical Fix: Same for non-agents (Direct Input)
-        const finalBalance = netSales - totalWinAmount;
-
-        otherPayouts.push({
-             name: source,
-             totalSales,
-             commissionRate,
-             commissionAmount,
-             netSales,
-             
-             totalWinBetAmount,
-             totalWinAmount,
-             overLimitWinBetAmount,
-             overLimitWinAmount,
-             heldWinBetAmount,
-             payout,
-
-             finalBalance,
-             individualBets: sourceWinBetsMap.get(source) || []
-        });
-    });
-
-    agentPayouts.sort((a, b) => b.totalSales - a.totalSales);
-    otherPayouts.sort((a, b) => b.totalSales - a.totalSales);
-    
-    this.payoutDetails.set({ 
-        winningNumber: num, 
-        totalBet,
-        totalHeldBet, 
-        totalHeldPayout, 
-        totalOverLimitBet,
-        totalOverLimitPayout,
-        agentPayouts,
-        otherPayouts
-    });
+  deleteHistoryEntry(id: string) {
+      this.history.update(h => h.filter(x => x.id !== id));
+      this.saveToStorage();
+      this.sanitizeOverLimitMaps(); // Fix: Sanitize maps after delete
   }
 
-  printPayout() { window.print(); }
-
-  async saveReport(): Promise<void> {
-    if (this.lotteryData().size === 0) {
-      this.statusMessage.set('မှတ်တမ်းတင်ရန် စာရင်းများမရှိသေးပါ။');
-      setTimeout(() => this.statusMessage.set(''), 3000);
-      return;
-    }
-    const type = this.lotteryType();
-    const currentMode = this.activeMode();
-    
-    try {
-        const filteredHistory = this.betHistory().filter(h => {
-             const entryMode = h.mode || 'ဒိုင်ကြီး';
-             return entryMode === currentMode;
-        });
-
-        // Use appropriate limits for report snapshot
-        let reportDefaultLimit = this.defaultLimit();
-        
-        // Note: For reports, we still snapshot the effective limits map as entries so older reports are compatible
-        let reportIndividualLimits: [string, number][] = Array.from(this.effectiveLimits().entries());
-
-        const report: Report = {
-            id: `report_${new Date().toISOString()}_${this.activeMode()}_${type === '2D' ? this.session() : this.drawDate()}_${type}`,
-            lotteryType: type,
-            date: new Date().toISOString(),
-            session: type === '2D' ? this.session() : undefined,
-            drawDate: type === '3D' ? this.drawDate() : undefined,
-            mode: this.activeMode(),
-            totalBetAmount: this.totalBetAmount(),
-            totalOverLimitAmount: this.totalOverLimitAmount(),
-            totalHeldAmount: this.totalHeldAmount(),
-            payableCommissionAmount: this.payableCommissionAmount(),
-            receivableCommissionAmount: this.receivableCommissionAmount(),
-            agentCommissionEarned: this.agentCommissionEarned(),
-            netAmount: this.netAmount(),
-            lotteryData: Array.from(this.lotteryData().entries()).map(([key, value]) => {
-                const totalAmount = value.reduce((sum, bet) => sum + bet.amount, 0);
-                return [key, totalAmount];
-            }),
-            betHistory: filteredHistory.map(h => h.input),
-            bookieName: this.bookieName(),
-            defaultLimit: reportDefaultLimit,
-            payoutRate: this.payoutRate(),
-            commissionToPay: this.commissionToPay(),
-            agentCommissionFromBookie: this.agentCommissionFromBookie(),
-            commissionFromUpperBookie: this.commissionFromUpperBookie(),
-            individualLimits: reportIndividualLimits,
-            upperBookies: this.upperBookies(),
-            agents: this.agents(),
-            currencySymbol: this.currencySymbol(),
-        };
-        await this.persistenceService.saveReport(report);
-        this.statusMessage.set('မှတ်တမ်းကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ။');
-        setTimeout(() => this.statusMessage.set(''), 3000);
-    } catch (error) {
-        console.error("Failed to save report:", error);
-        this.statusMessage.set('မှတ်တမ်း သိမ်းဆည်းရာတွင် အမှားအယွင်း ဖြစ်ပေါ်ပါသည်။');
-    }
-  }
-
-  handleReportRestore(report: Report) {
-    if (!confirm('သတိပေးချက်: လက်ရှိလုပ်ဆောင်နေသော စာရင်းများအားလုံး ပျက်သွားပြီး ရွေးချယ်ထားသော မှတ်တမ်းမှ ဒေတာများဖြင့် အစားထိုးသွားပါမည်။ ရှေ့ဆက်ရန် သေချာပါသလား?')) {
-      return;
-    }
-
-    const type = report.lotteryType;
-    this.lotteryType.set(type);
-    
-    // Normalize mode from report (Eng/Burmese legacy to Current App Standard)
-    let targetMode = 'ဒိုင်ကြီး'; // Default fallback
-    const lowerMode = (report.mode || '').toLowerCase();
-    
-    if (lowerMode.includes('agent') || lowerMode.includes('အေးဂျင့်')) targetMode = 'အေးဂျင့်';
-    else if (lowerMode.includes('middle') || lowerMode.includes('အလယ်')) targetMode = 'အလယ်ဒိုင်';
-    else if (lowerMode.includes('main') || lowerMode.includes('ဒိုင်ကြီး')) targetMode = 'ဒိုင်ကြီး';
-
-    this.activeMode.set(targetMode);
-    
-    let restoredHistory: HistoryEntry[] = [];
-
-    // Strategy 1: Try to restore from original input history (Best for editing)
-    if (report.betHistory && Array.isArray(report.betHistory) && report.betHistory.length > 0) {
-        restoredHistory = report.betHistory.map(inputStr => ({
-            id: crypto.randomUUID(),
-            input: inputStr,
-            source: targetMode === 'အေးဂျင့်' ? report.bookieName : 'Restored Report', 
-            mode: targetMode
-        }));
-    } 
-    
-    // Strategy 2: Fallback to Lottery Data Snapshot if history is missing/empty
-    // This handles legacy reports where history wasn't saved correctly but totals exist.
-    if (restoredHistory.length === 0 && report.lotteryData) {
-        let entries: [string, any][] = [];
-        const rawData = report.lotteryData as any;
-        
-        // Handle different legacy serialization formats (Array vs Object)
-        if (Array.isArray(rawData)) {
-            entries = rawData;
-        } else if (typeof rawData === 'object' && rawData !== null) {
-            entries = Object.entries(rawData);
-        }
-
-        if (entries.length > 0) {
-            // Reconstruct a single bulk input string: "00 500\n01 1000..."
-            const lines = entries
-                .map(([num, amount]) => `${num} ${Number(amount) || 0}`)
-                .filter(line => !line.endsWith(' 0')); // Skip zero amounts
-            
-            if (lines.length > 0) {
-                restoredHistory = [{
-                    id: crypto.randomUUID(),
-                    input: lines.join('\n'),
-                    source: 'Restored from Snapshot',
-                    mode: targetMode
-                }];
-                this.statusMessage.set('မှတ်တမ်းဟောင်း (History) မရှိသဖြင့် ဇယားမှ တိုက်ရိုက်ပြန်လည်ယူထားပါသည်။');
-            }
-        }
-    }
-
-    this.appState.update(current => {
-        // Restore Limits carefully. If restored report is Middle, update Middle limits.
-        const newState = { ...current[type] };
-        
-        if (targetMode === 'အလယ်ဒိုင်') {
-            newState.defaultLimitMiddle = report.defaultLimit;
-            // Restore legacy limits to individual limits as we don't know group structure from report
-            newState.individualLimitsMiddle = new Map(report.individualLimits);
-            newState.groupLimitsMiddle = new Map(); // Clear group limits on restore to avoid conflict
-            newState.myMiddleBookieName = report.bookieName;
-        } else if (targetMode === 'ဒိုင်ကြီး') {
-            newState.defaultLimitMain = report.defaultLimit;
-            newState.individualLimitsMain = new Map(report.individualLimits);
-            newState.groupLimitsMain = new Map();
-            newState.myMainBookieName = report.bookieName;
-        } else {
-            // Agent
-            newState.myAgentName = report.bookieName;
-        }
-
-        return {
-            ...current,
-            [type]: {
-                ...newState,
-                betHistory: restoredHistory,
-                payoutRate: report.payoutRate,
-                commissionToPay: report.commissionToPay,
-                commissionFromUpperBookie: report.commissionFromUpperBookie,
-                agentCommissionFromBookie: report.agentCommissionFromBookie,
-                session: report.session || current[type].session,
-                drawDate: report.drawDate || current[type].drawDate,
-            }
-        };
-    });
-
-    this.showReports.set(false);
-    
-    if (restoredHistory.length > 0) {
-        this.statusMessage.set('မှတ်တမ်းကို အောင်မြင်စွာ ပြန်တင်လိုက်ပါပြီ။ ပြင်ဆင်မှုများ ဆက်လက်ပြုလုပ်နိုင်ပါသည်။');
-    } else {
-        this.statusMessage.set('သတိပေးချက်: ဤမှတ်တမ်းတွင် ဒေတာမရှိပါ။');
-    }
-    
-    setTimeout(() => this.statusMessage.set(''), 4000);
-  }
-
-  copyToClipboard(text: string) { if(text) navigator.clipboard.writeText(text); }
-  
-  copyConfirmationAndClear(): void {
-    const msg = this.confirmationMessage();
-    if (msg) {
-      this.copyToClipboard(msg);
-      this.confirmationMessage.set('');
-    }
-  }
-
-  share(text: string) { if (navigator.share) navigator.share({ text }); else { this.copyToClipboard(text); alert('Copied to clipboard!'); } }
-
-  async backupData(): Promise<void> {
-     try {
-        this.statusMessage.set('Backup ပြုလုပ်နေသည်...');
-        const appData = await this.persistenceService.getAllDataForBackup();
-        const licenseData = await this.licenseService.getBackupData();
-        
-        const fullBackup = {
-            appData,
-            licenseData,
-            backupVersion: '1.0',
-            timestamp: new Date().toISOString()
-        };
-
-        const jsonString = JSON.stringify(fullBackup, null, 2);
-        const blob = new Blob([jsonString], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const date = new Date().toISOString().split('T')[0];
-        a.href = url;
-        a.download = `future2d_backup_${date}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        this.statusMessage.set('Backup ကို အောင်မြင်စွာ ပြုလုပ်ပြီးပါပြီ။');
-     } catch(e) {
-        console.error("Backup failed", e);
-        this.statusMessage.set('Backup ပြုလုပ်ရာတွင် အမှားအယွင်း ဖြစ်ပေါ်ပါသည်။');
-     } finally {
-        setTimeout(() => this.statusMessage.set(''), 4000);
-     }
-  }
-
-  handleRestore(event: Event): void {
-     const file = (event.target as HTMLInputElement).files?.[0];
-     if (!file) return;
-
-     if (!confirm('Restore ပြုလုပ်ပါက လက်ရှိဒေတာအားလုံး ပျက်စီးပြီး Backup ဖိုင်ထဲမှ ဒေတာများဖြင့် အစားထိုးသွားမည်ဖြစ်သည်။ ရှေ့ဆက်ရန် သေချာပါသလား?')) {
-        (event.target as HTMLInputElement).value = ''; 
-        return;
-     }
-
-     const reader = new FileReader();
-     reader.onload = async (e) => {
-        try {
-            this.statusMessage.set('Restore ပြုလုပ်နေသည်...');
-            const content = e.target?.result as string;
-            const backupData = JSON.parse(content);
-            
-            if (!backupData.appData || !backupData.licenseData) {
-                throw new Error('Invalid backup file format.');
-            }
-
-            await this.persistenceService.restoreAllData(backupData.appData);
-            await this.licenseService.restoreFromBackup(backupData.licenseData);
-
-            this.statusMessage.set('Restore ကို အောင်မြင်စွာ ပြုလုပ်ပြီးပါပြီ။ Application ကို ပြန်လည်စတင်နေသည်...');
-            
-            setTimeout(() => {
-                window.location.reload();
-            }, 2000);
-
-        } catch (err) {
-            console.error('Failed to restore data', err);
-            this.statusMessage.set('Restore ပြုလုပ်ရာတွင် အမှားအယွင်း ဖြစ်ပေါ်ပါသည်။ ဖိုင်ကိုစစ်ဆေးပါ။');
-            setTimeout(() => this.statusMessage.set(''), 4000);
-        } finally {
-            (event.target as HTMLInputElement).value = ''; 
-        }
-     };
-     reader.readAsText(file);
-  }
-
-  logout() { this.licenseService.logout(); }
-  setAgentSort(sortBy: 'name' | 'sales') { this.agentSortBy.set(sortBy); }
-
-  // --- Over-limit Management Methods ---
-  rejectOverLimit(number: string): void {
-    const amountToTransfer = this.acknowledgedOverLimits().get(number);
-    if (amountToTransfer) {
-      this.acknowledgedOverLimits.update(currentMap => {
-        const newMap = new Map(currentMap);
-        newMap.delete(number);
-        return newMap;
-      });
-      this.acknowledgedHeldOverLimits.update(currentMap => {
-        const newMap = new Map(currentMap);
-        newMap.set(number, (newMap.get(number) || 0) + amountToTransfer);
-        return newMap;
-      });
-    }
-
-    this.rejectedOverLimits.update(s => {
-      const newSet = new Set(s);
-      newSet.add(number);
-      return newSet;
-    });
-  }
-  reforwardOverLimit(number: string): void {
-    const amountToTransfer = this.acknowledgedHeldOverLimits().get(number);
-    if (amountToTransfer) {
-        this.acknowledgedHeldOverLimits.update(currentMap => {
-            const newMap = new Map(currentMap);
-            newMap.delete(number);
-            return newMap;
-        });
-        this.acknowledgedOverLimits.update(currentMap => {
-            const newMap = new Map(currentMap);
-            newMap.set(number, (newMap.get(number) || 0) + amountToTransfer);
-            return newMap;
-        });
-    }
-    
-    this.rejectedOverLimits.update(s => {
-      const newSet = new Set(s);
-      newSet.delete(number);
-      return newSet;
-    });
-  }
-
-  private acknowledgeList(list: OverLimitListItem[], mapSignal: WritableSignal<Map<string, number>>, title: string): void {
-      if (list.length === 0) return;
-      const message = this.formatOverLimitForCopy(list);
-      this.copyToClipboard(message);
-      this.statusMessage.set(`${title} စာရင်းကို copy ကူးပြီးပါပြီ။`);
-      setTimeout(() => this.statusMessage.set(''), 3000);
-
-      const fullOverLimitMap = new Map(this.overLimitCells().map(c => [c.number, c.overLimitAmount]));
-
-      mapSignal.update(currentMap => {
-        const newMap = new Map(currentMap);
-        list.forEach(item => {
-          const totalOverLimit = fullOverLimitMap.get(item.number) || 0;
-          newMap.set(item.number, totalOverLimit);
-        });
-        return newMap;
-      });
-  }
-
-  acknowledgeAllForwardableOverLimits(): void {
-      this.acknowledgeList(this.forwardableOverLimitNumbers(), this.acknowledgedOverLimits, 'အပေါ်ဒိုင်သို့ လွှဲရန်စာရင်း');
-  }
-  acknowledgeAllHeldOverLimits(): void {
-      this.acknowledgeList(this.heldOverLimitNumbers(), this.acknowledgedHeldOverLimits, 'ကိုင်ထားသော ကာသီးစာရင်း');
-  }
-  acknowledgeMainBookieOverLimits(): void {
-      this.acknowledgeList(this.displayedOverLimitNumbers(), this.acknowledgedOverLimits, 'လစ်မစ်ကျော်စာရင်းများ');
-  }
-  
-  formatDate(isoString: string): string {
-    if (!isoString) return '';
-    try {
-        const d = new Date(isoString);
-        return isNaN(d.getTime()) ? isoString : d.toLocaleDateString('en-CA');
-    } catch {
-        return isoString;
-    }
-  }
-
-  applyProfitSuggestion(): void {
-    const suggestion = this.profitOptimizerSuggestion();
-    if (!suggestion) return;
-  
-    // Update the correct limit based on mode
-    const currentLimit = this.defaultLimit();
-    const newLimit = currentLimit + suggestion.suggestedHoldingIncrease;
-    this.updateDefaultLimit(newLimit);
-  
-    this.suggestionAppliedRecently.set(true);
-    this.statusMessage.set('Default Limit ကို အကြံပြုချက်အတိုင်း အောင်မြင်စွာ ပြင်ဆင်ပြီးပါပြီ။');
-    setTimeout(() => this.statusMessage.set(''), 3000);
-  }
-  
-  dismissProfitSuggestion(): void {
-    this.profitOptimizerSuggestion.set(null);
-    this.suggestionAppliedRecently.set(false);
-  }
-
-  showSuggestionPanelAgain(): void {
-    this.suggestionAppliedRecently.set(false);
-  }
-
-  private formatOverLimitForCopy(list: OverLimitListItem[]): string {
-      if (!list || list.length === 0) return '';
-
-      const header = `--- ${this.bookieName()} ---`;
+  // --- Helper: Ensure acknowledged amounts don't exceed current actual over-limit ---
+  sanitizeOverLimitMaps() {
+      const grid = this.gridCells();
       
-      const today = new Date().toLocaleDateString('en-CA');
-      let dateLine = `နေ့စွဲ: ${this.lotteryType() === '3D' ? this.formatDate(this.drawDate()) : today}`;
-      
-      if (this.lotteryType() === '2D') {
-          const sessionText = this.session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း';
-          dateLine += ` (${sessionText})`;
+      this.acknowledgedOverLimits.update(map => {
+          const newMap = new Map(map);
+          let changed = false;
+          for (const [num, ackAmt] of newMap.entries()) {
+              const cell = grid.find(c => c.number === num);
+              const currentOver = cell ? cell.overLimitAmount : 0;
+              // If we acknowledged more than what is currently over limit (due to deletion), reduce it
+              if (ackAmt > currentOver) {
+                  if (currentOver <= 0) newMap.delete(num);
+                  else newMap.set(num, currentOver);
+                  changed = true;
+              }
+          }
+          return changed ? newMap : map;
+      });
+
+      this.heldOverLimits.update(map => {
+          const newMap = new Map(map);
+          let changed = false;
+          for (const [num, heldAmt] of newMap.entries()) {
+              // 'held' is also constrained by current over limit
+              const cell = grid.find(c => c.number === num);
+              const currentOver = cell ? cell.overLimitAmount : 0;
+              if (heldAmt > currentOver) {
+                  if (currentOver <= 0) newMap.delete(num);
+                  else newMap.set(num, currentOver);
+                  changed = true;
+              }
+          }
+          return changed ? newMap : map;
+      });
+  }
+
+  // --- Methods: Over Limit Actions ---
+  rejectOverLimit(number: string) {
+      const item = this.forwardableOverLimitNumbers().find(i => i.number === number);
+      if (item) {
+          this.heldOverLimits.update(map => {
+              const newMap = new Map(map);
+              const current = newMap.get(number) || 0;
+              newMap.set(number, current + item.overLimitAmount);
+              return newMap;
+          });
       }
+  }
 
-      const separator = '--------------------';
-      
-      const totalAmount = list.reduce((sum, item) => sum + item.overLimitAmount, 0);
-      const totalCount = list.length;
-
-      const bodyParts: string[] = [];
-      list.forEach((item, index) => {
-          bodyParts.push(`${item.number} = ${item.overLimitAmount}`);
-          if ((index + 1) % 10 === 0 && (index + 1) < list.length) {
-              bodyParts.push(separator);
-          }
+  reforwardOverLimit(number: string) {
+      this.heldOverLimits.update(map => {
+          const newMap = new Map(map);
+          newMap.delete(number);
+          return newMap;
       });
-      const body = bodyParts.join('\n');
-      
-      const footer = `စုစုပေါင်း (${totalCount}) ကွက်: ${totalAmount.toLocaleString()} ${this.currencySymbol()}`;
-
-      return `${header}\n${dateLine}\n${separator}\n${body}\n${separator}\n${footer}`;
   }
 
-  // --- Bet Detail Modal Methods ---
-  openBetDetailModal(number: string): void {
-    if ((this.lotteryData().get(number) || []).length === 0) return;
-    this.selectedNumberForDetail.set(number);
-    this.showBetDetailModal.set(true);
-  }
-  closeBetDetailModal(): void {
-    this.showBetDetailModal.set(false);
-    this.selectedNumberForDetail.set(null);
-  }
-  editBetFromDetail(betToEdit: BetDetail): void {
-    const historyEntry = this.betHistory().find(h => h.id === betToEdit.historyEntryId);
-    if (historyEntry) this.editHistoryEntry(historyEntry);
-    this.closeBetDetailModal();
-  }
-  deleteBetFromDetail(betToDelete: BetDetail): void {
-    const historyEntry = this.betHistory().find(h => h.id === betToDelete.historyEntryId);
-    if (historyEntry) {
-        if (confirm(`"${historyEntry.input}" ဟူသော စာရင်းတစ်ခုလုံးကို ဖျက်ရန် သေချာပါသလား?`)) {
-            this.deleteHistoryEntry(historyEntry.id);
-        }
-    }
-    this.closeBetDetailModal();
+  acknowledgeAllForwardableOverLimits() {
+      const list = this.forwardableOverLimitNumbers();
+      this.updateAcknowledgedMap(list);
   }
 
-  handleForwardingModalClose(assignments: Assignments | null): void {
-    this.isForwardingModalOpen.set(false);
-    if (assignments) {
-        const assignedNumbers = new Set<string>();
-        Object.values(assignments).forEach(betList => {
-            betList.forEach(bet => assignedNumbers.add(bet.number));
-        });
-        
-        const fullOverLimitMap = new Map(this.overLimitCells().map(c => [c.number, c.overLimitAmount]));
-
-        this.acknowledgedOverLimits.update(currentMap => {
-            const newMap = new Map(currentMap);
-            assignedNumbers.forEach(number => {
-                const totalOverLimit = Number(fullOverLimitMap.get(number) || 0);
-                if (totalOverLimit > 0) {
-                    newMap.set(number, totalOverLimit);
-                }
-            });
-            return newMap;
-        });
-
-        this.statusMessage.set('ကာသီးစာရင်းများကို အောင်မြင်စွာ ခွဲဝေပြီးပါပြီ။');
-        setTimeout(() => this.statusMessage.set(''), 3000);
-    }
+  acknowledgeAllHeldOverLimits() {
+     // Implementation depends on desired behavior (clear list visually?)
+     // For now, no-op or clear held map?
+     this.heldOverLimits.set(new Map());
   }
 
-  // --- Voucher Functions ---
-  openVoucherModal(): void {
-    if (this.pendingSubmissions().length === 0) return;
-
-    const allBets: { number: string; amount: number }[] = [];
-    const pending = this.pendingSubmissions();
-    for (const input of pending) {
-        const bets = this.betParsingService.parseRaw(input, this.lotteryType());
-        allBets.push(...bets);
-    }
-
-    if (allBets.length === 0) {
-        this.statusMessage.set('ဘောင်ချာထုတ်ရန် စာရင်းမရှိပါ။');
-        setTimeout(() => this.statusMessage.set(''), 2000);
-        return;
-    }
-
-    const totalAmount = allBets.reduce((sum, b) => sum + b.amount, 0);
-    const date = new Date().toLocaleDateString('en-CA');
-    const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-
-    this.voucherData.set({
-        items: allBets,
-        totalAmount,
-        totalCount: allBets.length,
-        date,
-        time,
-        currency: this.currencySymbol(),
-        settings: this.voucherSettings()
-    });
-    this.showVoucherModal.set(true);
+  acknowledgeMainBookieOverLimits() {
+      const list = this.displayedOverLimitNumbers();
+      this.updateAcknowledgedMap(list);
   }
 
-  printVoucher(): void {
-    window.print();
+  private updateAcknowledgedMap(items: {number: string, overLimitAmount: number}[]) {
+      this.acknowledgedOverLimits.update(map => {
+          const newMap = new Map(map);
+          const grid = this.gridCells();
+          items.forEach(i => {
+              const cell = grid.find(c => c.number === i.number);
+              if (cell) {
+                  newMap.set(i.number, cell.overLimitAmount); 
+              }
+          });
+          return newMap;
+      });
   }
 
-  closeVoucherModal(): void {
-    this.showVoucherModal.set(false);
-    this.voucherData.set(null);
-  }
-
-  saveVoucherSettings() {
-      const type = this.lotteryType();
-      this.appState.update(current => ({
-          ...current,
-          [type]: {
-              ...current[type],
-              voucherSettings: this.voucherSettings()
-          }
-      }));
-      this.showVoucherSettings.set(false);
-  }
-
+  // --- Methods: Image Generation ---
   async copyForwardableListAsImage() {
       if (typeof html2canvas === 'undefined') {
           alert('Error: Image generation library not loaded.');
@@ -2728,7 +596,6 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
 
       this.isGeneratingImage.set(true);
       
-      // Wait for DOM update
       setTimeout(async () => {
           const element = document.getElementById('forward-voucher-capture');
           if (!element) {
@@ -2747,6 +614,7 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
               canvas.toBlob(async (blob: Blob | null) => {
                   if(!blob) {
                       this.statusMessage.set('Image generation failed.');
+                      this.isGeneratingImage.set(false);
                       return;
                   }
                   try {
@@ -2754,10 +622,22 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
                           new ClipboardItem({ 'image/png': blob })
                       ]);
                       this.statusMessage.set('Img Copy ကူးပြီးပါပြီ! Messenger တွင် Paste (Ctrl+V) ချနိုင်ပါပြီ။');
+
+                      const fullOverLimitMap = new Map(this.overLimitCells().map(c => [c.number, c.overLimitAmount]));
+                      this.acknowledgedOverLimits.update(currentMap => {
+                        const newMap = new Map(currentMap);
+                        list.forEach(item => {
+                          const totalOverLimit = fullOverLimitMap.get(item.number) || 0;
+                          newMap.set(item.number, totalOverLimit);
+                        });
+                        return newMap;
+                      });
+
                   } catch (err) {
                       console.error(err);
                       this.statusMessage.set('Clipboard Error: HTTPS required.');
                   }
+                  
                   setTimeout(() => this.statusMessage.set(''), 4000);
                   this.isGeneratingImage.set(false);
               }, 'image/png');
@@ -2767,5 +647,388 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
               this.statusMessage.set('Error generating image.');
           }
       }, 100);
+  }
+
+  // --- Methods: Persistence ---
+  saveToStorage() {
+      const data = {
+          history: this.history(),
+          customLimits: Array.from(this.customLimits().entries()),
+          // ... other state
+      };
+      this.persistenceService.set('app_state', data);
+  }
+  
+  async loadState() {
+      const data = await this.persistenceService.get<any>('app_state');
+      if (data) {
+          if (data.history) this.history.set(data.history);
+          if (data.customLimits) this.customLimits.set(new Map(data.customLimits));
+      }
+      
+      const agents = await this.persistenceService.get<Agent[]>('lottery_agents');
+      if(agents) this.agents.set(agents);
+      
+      const uppers = await this.persistenceService.get<UpperBookie[]>('lottery_upper_bookies');
+      if(uppers) this.upperBookies.set(uppers);
+  }
+
+  backupData() {
+      this.persistenceService.getAllDataForBackup().then(data => {
+          const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `backup-${new Date().toISOString()}.json`;
+          a.click();
+      });
+  }
+
+  handleRestore(event: any) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+          try {
+              const data = JSON.parse(e.target?.result as string);
+              await this.persistenceService.restoreAllData(data);
+              window.location.reload();
+          } catch(err) {
+              alert('Invalid Backup File');
+          }
+      };
+      reader.readAsText(file);
+  }
+
+  // --- Methods: UI Toggles ---
+  toggleHeatmap() { this.showHeatmap.update(v => !v); }
+  toggleReports() { this.showReports.set(true); }
+  toggleChat() { this.showChat.set(true); }
+  
+  logout() {
+      this.licenseService.logout();
+      window.location.reload();
+  }
+
+  // --- Methods: Limits Management ---
+  toggleCustomLimitsDropdown() { this.showCustomLimitsDropdown.update(v => !v); }
+  clearAllCustomLimits() { this.customLimits.set(new Map()); }
+  openLimitModal(num?: string) { 
+      if(num) this.limitManageNumber.set(num);
+      else this.limitManageNumber.set('');
+      this.showLimitManagementModal.set(true); 
+  }
+  closeLimitModal() { this.showLimitManagementModal.set(false); }
+  
+  saveIndividualLimit() {
+      const num = this.limitManageNumber();
+      const amt = this.limitManageAmount();
+      if (num) {
+          // Simplified: split by comma/space
+          const tokens = num.split(/[\s,]+/).filter(x => x);
+          this.customLimits.update(m => {
+              const newMap = new Map(m);
+              tokens.forEach(t => {
+                   if (!isNaN(parseInt(t))) newMap.set(t, amt);
+              });
+              return newMap;
+          });
+      } else if (!num && amt > 0) {
+          this.defaultLimit.set(amt);
+      }
+      this.sanitizeOverLimitMaps(); // Fix: Sanitize maps after limit change
+      this.closeLimitModal();
+  }
+  
+  removeIndividualLimit(num: string) {
+      this.customLimits.update(m => {
+          const newMap = new Map(m);
+          newMap.delete(num);
+          return newMap;
+      });
+      this.sanitizeOverLimitMaps(); // Fix: Sanitize maps after limit change
+  }
+
+  applyBatchLimitChange(type: 'add' | 'sub' | 'set') {
+      const val = this.batchLimitAmount();
+      if (val <= 0) return;
+      this.customLimits.update(m => {
+          const newMap = new Map(m);
+          for (const key of newMap.keys()) {
+              const current = newMap.get(key) || 0;
+              if (type === 'add') newMap.set(key, current + val);
+              if (type === 'sub') newMap.set(key, Math.max(0, current - val));
+              if (type === 'set') newMap.set(key, val);
+          }
+          return newMap;
+      });
+      this.sanitizeOverLimitMaps(); // Fix: Sanitize maps after batch limit change
+  }
+  
+  removeBatchLimits() {
+      const nums = this.limitManageNumber().split(/[,\s]+/).filter(x => x);
+      this.customLimits.update(m => {
+          const newMap = new Map(m);
+          nums.forEach(n => newMap.delete(n));
+          return newMap;
+      });
+      this.sanitizeOverLimitMaps(); // Fix: Sanitize maps after limit removal
+      this.closeLimitModal();
+  }
+
+  // --- Agent Profile ---
+  addAgentProfile() {
+      const name = this.bookieName();
+      if (!this.agentProfiles().includes(name)) {
+          this.agentProfiles.update(p => [...p, name]);
+      }
+  }
+  removeAgentProfile() {
+      const name = this.bookieName();
+      this.agentProfiles.update(p => p.filter(n => n !== name));
+      if(this.agentProfiles().length > 0) this.bookieName.set(this.agentProfiles()[0]);
+  }
+  onProfileSelect(e: any) {
+      this.bookieName.set(e.target.value);
+  }
+
+  // --- Inbox / Chat Import ---
+  handleChatImport(data: {text: string, agentName: string}) {
+      this.showChat.set(false);
+      this.inboxInput.set(data.text);
+      this.selectedAgentForInbox.set(data.agentName); // Auto select if possible
+      this.addBetsFromInbox();
+  }
+
+  addBetsFromInbox() {
+      const input = this.inboxInput();
+      const agent = this.selectedAgentForInbox();
+      
+      if (!input || !agent) return;
+
+      const bets = this.betParsingService.parseRaw(input, this.lotteryType());
+      this.processNewBets(bets, `Inbox: ${agent}`, input);
+      this.inboxInput.set('');
+  }
+  
+  isInboxSubmitDisabled() { return !this.inboxInput(); }
+  
+  acceptAllFromInbox() {
+      this.pendingInboxConfirmation.set(false);
+  }
+  
+  acceptSafeOnlyFromInbox() {
+      this.pendingInboxConfirmation.set(false);
+  }
+  
+  cancelInboxConfirmation() {
+      this.pendingInboxConfirmation.set(false);
+  }
+  
+  closeInboxResult() {
+      this.lastInboxResult.set(null);
+  }
+  
+  copyInboxReply() {
+      navigator.clipboard.writeText(this.inboxReplyText());
+  }
+
+  // --- Payout ---
+  openPayoutModal() { this.showPayoutModal.set(true); }
+  
+  calculatePayout() {
+      const win = this.winningNumber();
+      if (!win) return;
+      
+      const grid = this.gridCells();
+      const winCell = grid.find(c => c.number === win);
+      
+      // Ensure we are working with numbers to prevent "left-hand side of arithmetic operation" errors
+      const cellAmount = winCell ? winCell.amount : 0;
+      const cellOverLimit = winCell ? winCell.overLimitAmount : 0;
+      const totalHeldWin = cellAmount - cellOverLimit;
+      
+      this.payoutDetails.set({
+          winningNumber: win,
+          totalBet: this.totalBetAmount(),
+          totalOverLimitBet: this.totalOverLimitAmount(),
+          totalHeldBet: this.totalHeldAmount(),
+          totalHeldPayout: totalHeldWin * this.payoutRate(),
+          agentPayouts: [], 
+          otherPayouts: []
+      });
+  }
+  printPayout() { window.print(); }
+
+  // --- Detail Modal ---
+  openBetDetailModal(num: string) {
+      this.selectedNumberForDetail.set(num);
+      const cell = this.gridCells().find(c => c.number === num);
+      this.betsForDetailModal.set(cell ? cell.breakdown : []);
+      this.showBetDetailModal.set(true);
+  }
+  closeBetDetailModal() { this.showBetDetailModal.set(false); }
+  editBetFromDetail(bet: BetDetail) {
+      this.deleteBetFromDetail(bet);
+      this.userInput.set(`${(bet as any).number} ${bet.amount}`);
+      this.showBetDetailModal.set(false);
+  }
+  deleteBetFromDetail(bet: BetDetail) {
+      this.history.update(h => {
+          return h.map(entry => {
+              const filteredBets = entry.bets.filter(b => b.id !== bet.id);
+              return { ...entry, bets: filteredBets };
+          }).filter(entry => entry.bets.length > 0);
+      });
+      this.saveToStorage();
+      this.sanitizeOverLimitMaps(); // Fix: Sanitize maps after delete from detail
+      this.openBetDetailModal(this.selectedNumberForDetail());
+  }
+
+  // --- Voucher ---
+  openVoucherModal() {
+      this.voucherData.set({
+          items: this.gridCells().filter(c => c.amount > 0).map(c => ({number: c.number, amount: c.amount})),
+          totalCount: this.gridCells().filter(c => c.amount > 0).length,
+          totalAmount: this.totalBetAmount(),
+          date: this.datePipe.transform(new Date(), 'dd/MM/yyyy'),
+          time: this.datePipe.transform(new Date(), 'shortTime'),
+          settings: this.voucherSettings()
+      });
+      this.showVoucherModal.set(true);
+  }
+  closeVoucherModal() { this.showVoucherModal.set(false); }
+  printVoucher() { window.print(); }
+  saveVoucherSettings() { this.showVoucherSettings.set(false); }
+
+  // --- Submission ---
+  openSubmissionModal() {
+      const lines = this.pendingSubmissions();
+      this.submissionText.set(lines.join('\n'));
+      this.showSubmissionModal.set(true);
+  }
+  copySubmissionText() {
+      navigator.clipboard.writeText(this.submissionText());
+  }
+  share(text: string) {
+      if (navigator.share) {
+          navigator.share({ title: '2D List', text: text });
+      }
+  }
+  finishBatch() {
+      this.showSubmissionModal.set(false);
+      this.clearSubmissions();
+  }
+  clearSubmissions() {
+      this.confirmClearAll();
+  }
+
+  // --- Voice ---
+  toggleVoiceInput() {
+      if (this.voiceService.isListening()) {
+          this.voiceService.stopListening();
+      } else {
+          this.voiceService.startListening((text, isFinal) => {
+              if (isFinal) {
+                  this.userInput.update(v => v + ' ' + text);
+              }
+          });
+      }
+  }
+
+  // --- Agents Management (Basic Impl) ---
+  addAgent() {
+      if(this.newAgentName()) {
+          this.agents.update(a => [...a, { name: this.newAgentName(), commission: this.newAgentCommission() }]);
+          this.persistenceService.set('lottery_agents', this.agents());
+          this.newAgentName.set('');
+      }
+  }
+  removeAgent(name: string) {
+      this.agents.update(a => a.filter(x => x.name !== name));
+      this.persistenceService.set('lottery_agents', this.agents());
+  }
+  addUpperBookie() {
+      if(this.newUpperBookieName()) {
+          this.upperBookies.update(u => [...u, { name: this.newUpperBookieName(), commission: this.newUpperBookieCommission() }]);
+          this.persistenceService.set('lottery_upper_bookies', this.upperBookies());
+          this.newUpperBookieName.set('');
+      }
+  }
+  removeUpperBookie(name: string) {
+      this.upperBookies.update(u => u.filter(x => x.name !== name));
+      this.persistenceService.set('lottery_upper_bookies', this.upperBookies());
+  }
+  addAgentUpperBookie() {
+      if(this.newAgentUpperBookieName()) {
+          this.agentUpperBookies.update(u => [...u, { name: this.newAgentUpperBookieName(), commission: 0 }]);
+          this.newAgentUpperBookieName.set('');
+      }
+  }
+  removeAgentUpperBookie(name: string) {
+      this.agentUpperBookies.update(u => u.filter(x => x.name !== name));
+  }
+
+  // --- Reports ---
+  saveReport() {
+      const report: Report = {
+          id: `report_${Date.now()}`,
+          lotteryType: this.lotteryType(),
+          date: new Date().toISOString(),
+          mode: this.activeMode(),
+          totalBetAmount: this.totalBetAmount(),
+          totalOverLimitAmount: this.totalOverLimitAmount(),
+          totalHeldAmount: this.totalHeldAmount(),
+          payableCommissionAmount: this.payableCommissionAmount(),
+          receivableCommissionAmount: this.receivableCommissionAmount(),
+          agentCommissionEarned: this.agentCommissionEarned(),
+          netAmount: this.netAmount(),
+          lotteryData: this.gridCells().filter(c => c.amount > 0).map(c => [c.number, c.amount]),
+          betHistory: this.history().map(h => h.input),
+          bookieName: this.bookieName(),
+          defaultLimit: this.defaultLimit(),
+          payoutRate: this.payoutRate(),
+          commissionToPay: this.commissionToPay(),
+          agentCommissionFromBookie: this.agentCommissionFromBookie(),
+          commissionFromUpperBookie: this.commissionFromUpperBookie(),
+          individualLimits: [],
+          upperBookies: [],
+          agents: [],
+          currencySymbol: this.currencySymbol()
+      };
+      
+      this.persistenceService.saveReport(report);
+      this.statusMessage.set('Report saved.');
+      setTimeout(() => this.statusMessage.set(''), 2000);
+  }
+  
+  handleReportRestore(r: Report) {
+      this.history.set([]); 
+      if (r.betHistory) {
+          r.betHistory.forEach(input => {
+             const bets = this.betParsingService.parseRaw(input, r.lotteryType);
+             this.processNewBets(bets, 'Restored', input);
+          });
+      }
+      this.showReports.set(false);
+  }
+
+  // --- Forwarding Modal ---
+  handleForwardingModalClose(result: Assignments | null) {
+      this.isForwardingModalOpen.set(false);
+      if (result) {
+          this.acknowledgeAllForwardableOverLimits();
+      }
+  }
+
+  // --- Profit Optimizer ---
+  dismissProfitSuggestion() { this.profitOptimizerSuggestion.set(null); }
+  applyProfitSuggestion() { 
+      this.suggestionAppliedRecently.set(true);
+  }
+  showSuggestionPanelAgain() { this.suggestionAppliedRecently.set(false); }
+
+  formatDate(d: string) { 
+      try { return new Date(d).toLocaleDateString(); } catch { return d; }
   }
 }

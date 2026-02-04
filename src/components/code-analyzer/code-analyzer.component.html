@@ -617,32 +617,31 @@
 <!-- ========================================== -->
 
 <!-- Hidden Voucher Template for Image Capture -->
-<div id="forward-voucher-capture" style="position: absolute; left: -9999px; top: 0; width: 320px; background-color: #1e293b; color: white; padding: 20px; font-family: monospace; z-index: -100;">
-    <div style="text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #64748b; padding-bottom: 10px;">
-        <h3 style="margin: 0; font-size: 18px; color: #a5b4fc; font-weight: bold;">--- {{ bookieName() }} ---</h3>
-        <p style="margin: 5px 0 0 0; font-size: 12px; color: #94a3b8;">
+<div id="forward-voucher-capture" style="position: absolute; left: -9999px; top: 0; width: 800px; background-color: white; color: black; padding: 20px; font-family: monospace; z-index: -100; border: 2px solid black;">
+    <!-- Header -->
+    <div style="text-align: center; margin-bottom: 10px; border-bottom: 2px solid black; padding-bottom: 10px;">
+        <h3 style="margin: 0; font-size: 32px; font-weight: bold;">--- {{ bookieName() }} ---</h3>
+        <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: bold; color: #444;">
             နေ့စွဲ: {{ lotteryType() === '3D' ? formatDate(drawDate()) : (session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း') }}
         </p>
     </div>
     
-    <div style="margin-bottom: 10px;">
-        <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; margin-bottom: 5px; color: #cbd5e1;">
-            <span>နံပါတ်</span>
-            <span>ပမာဏ</span>
-        </div>
+    <!-- Grid Content (Using Flexbox with Borders) -->
+    <div style="display: flex; flex-wrap: wrap; width: 100%; border-top: 2px solid #000; border-left: 2px solid #000;">
         @for (item of forwardableOverLimitNumbers(); track item.number) {
-            <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 2px;">
-                <span style="font-weight: bold;">{{ item.number }}</span>
-                <span>{{ item.overLimitAmount.toLocaleString() }}</span>
+            <!-- Each Cell: 25% Width (4 Cols) -->
+            <div style="width: 25%; box-sizing: border-box; border-right: 2px solid #000; border-bottom: 2px solid #000; padding: 10px 5px; display: flex; justify-content: center; align-items: center;">
+                <span style="font-weight: bold; font-size: 24px; color: #000;">{{ item.number }}</span>
+                <span style="margin: 0 8px; font-weight: bold; font-size: 20px; color: #555;">=</span>
+                <span style="font-weight: bold; font-size: 24px; color: #000;">{{ item.overLimitAmount.toLocaleString() }}</span>
             </div>
         }
     </div>
 
-    <div style="border-top: 1px dashed #64748b; margin-top: 10px; padding-top: 10px;">
-        <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 16px;">
-            <span>စုစုပေါင်း ({{ forwardableOverLimitNumbers().length }})</span>
-            <span>{{ financialForwardAmount().toLocaleString() }} {{ currencySymbol() }}</span>
-        </div>
+    <!-- Footer -->
+    <div style="border-top: 2px solid black; margin-top: 20px; padding-top: 10px; display: flex; justify-content: space-between; font-weight: bold; font-size: 24px;">
+        <span>စုစုပေါင်း ({{ forwardableOverLimitNumbers().length }})</span>
+        <span>{{ pendingForwardableAmount().toLocaleString() }} {{ currencySymbol() }}</span>
     </div>
 </div>
 
