@@ -87,8 +87,14 @@ interface AppState {
     // Split limits for Middle and Main bookies
     defaultLimitMain: number;
     defaultLimitMiddle: number;
+    
+    // "individualLimits" now strictly stores SINGLE NUMBER overrides (e.g. "01": 500)
     individualLimitsMain: Map<string, number>;
     individualLimitsMiddle: Map<string, number>;
+
+    // NEW: "groupLimits" stores batch rules (e.g. "1a": 500, "nk": 1000)
+    groupLimitsMain: Map<string, number>;
+    groupLimitsMiddle: Map<string, number>;
     
     payoutRate: number;
     commissionToPay: number;
@@ -263,11 +269,59 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
   commissionFromUpperBookie = computed(() => this.appState()[this.lotteryType()].commissionFromUpperBookie);
   agentCommissionFromBookie = computed(() => this.appState()[this.lotteryType()].agentCommissionFromBookie);
   
-  // Updated Computed: Return correct limits map based on mode
-  individualLimits = computed(() => {
-      const state = this.appState()[this.lotteryType()];
-      if (this.activeMode() === 'အလယ်ဒိုင်') return state.individualLimitsMiddle;
-      return state.individualLimitsMain;
+  // COMPUTED: Calculates the "Real" effective limit for every number
+  // It merges Group Limits (expanded) and Individual Limits (overrides)
+  effectiveLimits = computed(() => {
+      const type = this.lotteryType();
+      const state = this.appState()[type];
+      const mode = this.activeMode();
+      
+      const groupLimits = mode === 'အလယ်ဒိုင်' ? state.groupLimitsMiddle : state.groupLimitsMain;
+      const individualLimits = mode === 'အလယ်ဒိုင်' ? state.individualLimitsMiddle : state.individualLimitsMain;
+      
+      // We calculate effective limits on demand for calculations
+      const effectiveMap = new Map<string, number>();
+
+      // 1. Expand Group Limits (e.g. "1a" -> 01, 10, 11...)
+      groupLimits.forEach((limit, key) => {
+          // Use a dummy amount '1' to just get the numbers list from the parser
+          const expanded = this.betParsingService.parseRaw(`${key} 1`, type);
+          expanded.forEach(bet => {
+              effectiveMap.set(bet.number, limit);
+          });
+      });
+
+      // 2. Apply Individual Overrides (Specific wins over Group)
+      individualLimits.forEach((limit, number) => {
+          effectiveMap.set(number, limit);
+      });
+
+      return effectiveMap;
+  });
+  
+  // COMPUTED: For Display List (Shows Group Keys + Individual Keys)
+  customLimitsList = computed(() => {
+      const type = this.lotteryType();
+      const state = this.appState()[type];
+      const mode = this.activeMode();
+      
+      const groupLimits = mode === 'အလယ်ဒိုင်' ? state.groupLimitsMiddle : state.groupLimitsMain;
+      const individualLimits = mode === 'အလယ်ဒိုင်' ? state.individualLimitsMiddle : state.individualLimitsMain;
+
+      const list: { number: string, limit: number, isGroup: boolean }[] = [];
+
+      // Add Groups
+      groupLimits.forEach((limit, key) => {
+          list.push({ number: key, limit, isGroup: true });
+      });
+
+      // Add Individuals
+      individualLimits.forEach((limit, key) => {
+          list.push({ number: key, limit, isGroup: false });
+      });
+
+      // Sort by Key
+      return list.sort((a, b) => a.number.localeCompare(b.number));
   });
   
   bookieName = computed(() => {
@@ -341,7 +395,7 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
     if (this.lotteryType() !== '2D') return [];
     const data = this.lotteryData();
     const cells: GridCell[] = [];
-    const currentIndLimits = this.individualLimits();
+    const currentEffectiveLimits = this.effectiveLimits();
     const currentDefLimit = this.defaultLimit();
     const isAgent = this.activeMode() === 'အေးဂျင့်';
 
@@ -351,8 +405,8 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
       const amount = breakdown.reduce((sum, bet) => sum + bet.amount, 0);
       
       // Agents don't have custom limits logic in this view
-      const hasCustomLimit = !isAgent && currentIndLimits.has(numberStr);
-      const limit = hasCustomLimit ? currentIndLimits.get(numberStr)! : currentDefLimit;
+      const hasCustomLimit = !isAgent && currentEffectiveLimits.has(numberStr);
+      const limit = hasCustomLimit ? currentEffectiveLimits.get(numberStr)! : currentDefLimit;
       
       // Agents should NEVER be 'over limit' in their view (unless we implement specific agent limits later)
       const isOverLimit = !isAgent && amount > limit;
@@ -372,7 +426,7 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
       if (this.lotteryType() !== '3D') return [];
       const data = this.lotteryData();
       const items: GridCell[] = [];
-      const currentIndLimits = this.individualLimits();
+      const currentEffectiveLimits = this.effectiveLimits();
       const currentDefLimit = this.defaultLimit();
       const isAgent = this.activeMode() === 'အေးဂျင့်';
 
@@ -380,8 +434,8 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
           const amount = breakdown.reduce((sum, bet) => sum + bet.amount, 0);
           if (amount === 0) continue;
           
-          const hasCustomLimit = !isAgent && currentIndLimits.has(numberStr);
-          const limit = hasCustomLimit ? currentIndLimits.get(numberStr)! : currentDefLimit;
+          const hasCustomLimit = !isAgent && currentEffectiveLimits.has(numberStr);
+          const limit = hasCustomLimit ? currentEffectiveLimits.get(numberStr)! : currentDefLimit;
 
           const isOverLimit = !isAgent && amount > limit;
           const overLimitAmount = isOverLimit ? amount - limit : 0;
@@ -398,13 +452,6 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
       const term = this.search3DTerm().toLowerCase();
       if (!term) return this.listItems();
       return this.listItems().filter(item => item.number.includes(term));
-  });
-  
-  customLimitsList = computed(() => {
-      const limits = this.individualLimits();
-      return Array.from(limits.entries())
-        .map(([number, limit]) => ({ number, limit }))
-        .sort((a, b) => a.number.localeCompare(b.number));
   });
 
   totalBetAmount = computed<number>(() => {
@@ -828,6 +875,8 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
       defaultLimitMiddle: defLimit,
       individualLimitsMain: new Map<string, number>(),
       individualLimitsMiddle: new Map<string, number>(),
+      groupLimitsMain: new Map<string, number>(),
+      groupLimitsMiddle: new Map<string, number>(),
       
       payoutRate: type === '2D' ? 80 : 500,
       commissionToPay: 10,
@@ -869,15 +918,16 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
         profiles = [...profiles, myAgentName];
     }
     
-    // Migration Logic: If stored data is from old version, migrate generic limits to specific limits
-    // Default to Main Bookie limits if ambiguous, or duplicate to both to be safe.
     let individualLimitsMain = stored.individualLimitsMain ? new Map<string, number>(stored.individualLimitsMain) : new Map<string, number>();
     let individualLimitsMiddle = stored.individualLimitsMiddle ? new Map<string, number>(stored.individualLimitsMiddle) : new Map<string, number>();
     
+    // Restore Group Limits
+    let groupLimitsMain = stored.groupLimitsMain ? new Map<string, number>(stored.groupLimitsMain) : new Map<string, number>();
+    let groupLimitsMiddle = stored.groupLimitsMiddle ? new Map<string, number>(stored.groupLimitsMiddle) : new Map<string, number>();
+
     // Legacy migration
     if ((stored as any).individualLimits) {
         const legacyLimits = new Map((stored as any).individualLimits);
-        // If specific limits are empty, populate them with legacy data
         if (individualLimitsMain.size === 0) individualLimitsMain = new Map(legacyLimits) as Map<string, number>;
         if (individualLimitsMiddle.size === 0) individualLimitsMiddle = new Map(legacyLimits) as Map<string, number>;
     }
@@ -890,6 +940,8 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
       ...stored,
       individualLimitsMain,
       individualLimitsMiddle,
+      groupLimitsMain,
+      groupLimitsMiddle,
       defaultLimitMain,
       defaultLimitMiddle,
       myAgentName,
@@ -899,8 +951,6 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
       voucherSettings: stored.voucherSettings || initial.voucherSettings,
       agentDrafts: stored.agentDrafts || {}, 
       agentInputs: stored.agentInputs || {},
-      // Use stored session if available, otherwise default to initial (time-based) only for fresh start.
-      // This disables auto-switching on reload.
       session: stored.session || initial.session 
     };
   }
@@ -1285,11 +1335,15 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
       // FIX: Only clear the limits relevant to the active mode
       let individualLimitsMain = current[type].individualLimitsMain;
       let individualLimitsMiddle = current[type].individualLimitsMiddle;
+      let groupLimitsMain = current[type].groupLimitsMain;
+      let groupLimitsMiddle = current[type].groupLimitsMiddle;
       
       if (currentMode === 'အလယ်ဒိုင်') {
           individualLimitsMiddle = new Map<string, number>();
+          groupLimitsMiddle = new Map<string, number>();
       } else if (currentMode === 'ဒိုင်ကြီး') {
           individualLimitsMain = new Map<string, number>();
+          groupLimitsMain = new Map<string, number>();
       }
 
       return {
@@ -1301,7 +1355,9 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
           agentDrafts: newDrafts,
           agentInputs: newInputs,
           individualLimitsMain,
-          individualLimitsMiddle
+          individualLimitsMiddle,
+          groupLimitsMain,
+          groupLimitsMiddle
         }
       };
     });
@@ -1465,7 +1521,15 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
     if (this.activeMode() === 'အေးဂျင့်') return;
     this.showCustomLimitsDropdown.set(false); // Close dropdown if opening modal
     this.limitManageNumber.set(number || '');
-    const currentLimit = number ? (this.individualLimits().get(number) || this.defaultLimit()) : this.defaultLimit();
+    
+    // Check if this number has a specific override first
+    let currentLimit = this.defaultLimit();
+    if (number) {
+        if (this.effectiveLimits().has(number)) {
+            currentLimit = this.effectiveLimits().get(number)!;
+        }
+    }
+    
     this.limitManageAmount.set(currentLimit);
     this.showLimitManagementModal.set(true);
   }
@@ -1501,8 +1565,6 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
     }
 
     // Case 2: Individual/Batch Limit via Parsing Service
-    // We parse the input string (e.g. "1t", "apu", "12") with a dummy amount "1"
-    // The parser returns all numbers associated with that term.
     const parsedTargets = this.betParsingService.parseRaw(`${inputRaw} 1`, type);
 
     if (parsedTargets.length === 0) {
@@ -1513,22 +1575,40 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
 
     this.appState.update(current => {
         const currentState = current[type];
-        let newLimits: Map<string, number>;
+        
+        let individualLimits: Map<string, number>;
+        let groupLimits: Map<string, number>;
 
         if (mode === 'အလယ်ဒိုင်') {
-            newLimits = new Map(currentState.individualLimitsMiddle);
+            individualLimits = new Map(currentState.individualLimitsMiddle);
+            groupLimits = new Map(currentState.groupLimitsMiddle);
         } else {
-            newLimits = new Map(currentState.individualLimitsMain);
+            individualLimits = new Map(currentState.individualLimitsMain);
+            groupLimits = new Map(currentState.groupLimitsMain);
         }
 
-        // Apply limit to ALL expanded numbers
-        parsedTargets.forEach(target => {
-            newLimits.set(target.number, limit);
-        });
+        // Logic: If input expands to multiple numbers (e.g. "1a", "nk"), save as a GROUP rule.
+        // Also clear any individual overrides for these numbers so the group rule takes effect cleanly.
+        if (parsedTargets.length > 1) {
+            groupLimits.set(inputRaw, limit);
+            
+            // Cleanup individual overrides for items in this group
+            parsedTargets.forEach(target => {
+                individualLimits.delete(target.number);
+            });
+        } else {
+            // Single Number Override
+            individualLimits.set(parsedTargets[0].number, limit);
+        }
 
         const newState = { ...currentState };
-        if (mode === 'အလယ်ဒိုင်') newState.individualLimitsMiddle = newLimits;
-        else newState.individualLimitsMain = newLimits;
+        if (mode === 'အလယ်ဒိုင်') {
+            newState.individualLimitsMiddle = individualLimits;
+            newState.groupLimitsMiddle = groupLimits;
+        } else {
+            newState.individualLimitsMain = individualLimits;
+            newState.groupLimitsMain = groupLimits;
+        }
 
         return { ...current, [type]: newState };
     });
@@ -1538,7 +1618,7 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
     
     // Feedback based on count
     if (parsedTargets.length > 1) {
-        this.statusMessage.set(`${inputRaw} အတွက် ${parsedTargets.length} ကွက်လုံးကို လစ်မစ်သတ်မှတ်ပြီးပါပြီ။`);
+        this.statusMessage.set(`'${inputRaw}' အတွက် Group Limit (${limit}) သတ်မှတ်ပြီးပါပြီ။`);
     } else {
         this.statusMessage.set(`ဂဏန်း ${parsedTargets[0].number} အတွက် လစ်မစ်သတ်မှတ်ပြီးပါပြီ။`);
     }
@@ -1546,73 +1626,52 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
   }
 
   // Called from the Dropdown list 'x' button
-  removeIndividualLimit(number: string) {
+  removeIndividualLimit(key: string) {
       const type = this.lotteryType();
       const mode = this.activeMode();
       this.appState.update(current => {
         const currentState = current[type];
-        let newLimits: Map<string, number>;
+        let individualLimits: Map<string, number>;
+        let groupLimits: Map<string, number>;
         
         if (mode === 'အလယ်ဒိုင်') {
-            newLimits = new Map(currentState.individualLimitsMiddle);
-            newLimits.delete(number);
-            return { ...current, [type]: { ...currentState, individualLimitsMiddle: newLimits } };
+            individualLimits = new Map(currentState.individualLimitsMiddle);
+            groupLimits = new Map(currentState.groupLimitsMiddle);
         } else {
-            newLimits = new Map(currentState.individualLimitsMain);
-            newLimits.delete(number);
-            return { ...current, [type]: { ...currentState, individualLimitsMain: newLimits } };
+            individualLimits = new Map(currentState.individualLimitsMain);
+            groupLimits = new Map(currentState.groupLimitsMain);
         }
+
+        // Check if it's a group key or individual key
+        if (groupLimits.has(key)) {
+            groupLimits.delete(key);
+        } else {
+            individualLimits.delete(key);
+        }
+
+        const newState = { ...currentState };
+        if (mode === 'အလယ်ဒိုင်') {
+            newState.individualLimitsMiddle = individualLimits;
+            newState.groupLimitsMiddle = groupLimits;
+        } else {
+            newState.individualLimitsMain = individualLimits;
+            newState.groupLimitsMain = groupLimits;
+        }
+        return { ...current, [type]: newState };
       });
-      if (this.limitManageNumber() === number) {
+      
+      if (this.limitManageNumber() === key) {
           this.showLimitManagementModal.set(false);
       }
   }
   
-  // Called from the Modal 'Reset' button - Handles Batch Removal
+  // Called from the Modal 'Reset' button - Handles Batch Removal by Key
   removeBatchLimits() {
       const inputRaw = this.limitManageNumber().trim();
       if (!inputRaw) return;
-
-      const type = this.lotteryType();
-      const mode = this.activeMode();
-      
-      const parsedTargets = this.betParsingService.parseRaw(`${inputRaw} 1`, type);
-      if (parsedTargets.length === 0) {
-          this.statusMessage.set('Reset လုပ်ရန် ဂဏန်းမမှန်ကန်ပါ။');
-          setTimeout(() => this.statusMessage.set(''), 2000);
-          return;
-      }
-
-      this.appState.update(current => {
-        const currentState = current[type];
-        let newLimits: Map<string, number>;
-        
-        if (mode === 'အလယ်ဒိုင်') {
-            newLimits = new Map(currentState.individualLimitsMiddle);
-        } else {
-            newLimits = new Map(currentState.individualLimitsMain);
-        }
-
-        parsedTargets.forEach(target => {
-            newLimits.delete(target.number);
-        });
-
-        const newState = { ...currentState };
-        if (mode === 'အလယ်ဒိုင်') newState.individualLimitsMiddle = newLimits;
-        else newState.individualLimitsMain = newLimits;
-
-        return { ...current, [type]: newState };
-      });
-
-      this.showLimitManagementModal.set(false);
-      this.limitManageNumber.set('');
-      
-      if (parsedTargets.length > 1) {
-          this.statusMessage.set(`${inputRaw} အတွက် ${parsedTargets.length} ကွက်လုံးကို လစ်မစ်ဖျက်ပြီးပါပြီ (Default Limit ပြန်ဖြစ်ပါမည်)။`);
-      } else {
-          this.statusMessage.set(`ဂဏန်း ${parsedTargets[0].number} ၏ သီးသန့်လစ်မစ်ကို ဖျက်ပြီးပါပြီ။`);
-      }
-      setTimeout(() => this.statusMessage.set(''), 3000);
+      this.removeIndividualLimit(inputRaw);
+      this.statusMessage.set(`'${inputRaw}' လစ်မစ်ကို ဖျက်ပြီးပါပြီ။`);
+      setTimeout(() => this.statusMessage.set(''), 2000);
   }
   
   // New Feature: Apply Batch Changes to Existing Custom Limits
@@ -1629,31 +1688,46 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
 
       this.appState.update(current => {
           const currentState = current[type];
-          let oldLimits: Map<string, number>;
           
-          if (mode === 'အလယ်ဒိုင်') oldLimits = currentState.individualLimitsMiddle;
-          else oldLimits = currentState.individualLimitsMain;
+          let individualLimits: Map<string, number>;
+          let groupLimits: Map<string, number>;
 
-          if (oldLimits.size === 0) {
+          if (mode === 'အလယ်ဒိုင်') {
+              individualLimits = new Map(currentState.individualLimitsMiddle);
+              groupLimits = new Map(currentState.groupLimitsMiddle);
+          } else {
+              individualLimits = new Map(currentState.individualLimitsMain);
+              groupLimits = new Map(currentState.groupLimitsMain);
+          }
+
+          if (individualLimits.size === 0 && groupLimits.size === 0) {
               this.statusMessage.set('ပြင်ဆင်ရန် သီးသန့်လစ်မစ်များ မရှိသေးပါ။');
               setTimeout(() => this.statusMessage.set(''), 2000);
               return current; 
           }
 
-          const newLimits = new Map<string, number>();
-          
-          oldLimits.forEach((currentLimit, number) => {
-              let newLimit = currentLimit;
-              if (operation === 'add') newLimit += val;
-              else if (operation === 'sub') newLimit = Math.max(0, newLimit - val);
-              else if (operation === 'set') newLimit = val;
-              
-              newLimits.set(number, newLimit);
-          });
+          // Helper to update a map
+          const updateMap = (map: Map<string, number>) => {
+              map.forEach((currentLimit, key) => {
+                  let newLimit = currentLimit;
+                  if (operation === 'add') newLimit += val;
+                  else if (operation === 'sub') newLimit = Math.max(0, newLimit - val);
+                  else if (operation === 'set') newLimit = val;
+                  map.set(key, newLimit);
+              });
+          };
+
+          updateMap(individualLimits);
+          updateMap(groupLimits);
 
           const newState = { ...currentState };
-          if (mode === 'အလယ်ဒိုင်') newState.individualLimitsMiddle = newLimits;
-          else newState.individualLimitsMain = newLimits;
+          if (mode === 'အလယ်ဒိုင်') {
+              newState.individualLimitsMiddle = individualLimits;
+              newState.groupLimitsMiddle = groupLimits;
+          } else {
+              newState.individualLimitsMain = individualLimits;
+              newState.groupLimitsMain = groupLimits;
+          }
 
           return { ...current, [type]: newState };
       });
@@ -1674,8 +1748,13 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
 
       this.appState.update(current => {
           const newState = { ...current[type] };
-          if (mode === 'အလယ်ဒိုင်') newState.individualLimitsMiddle = new Map();
-          else newState.individualLimitsMain = new Map();
+          if (mode === 'အလယ်ဒိုင်') {
+              newState.individualLimitsMiddle = new Map();
+              newState.groupLimitsMiddle = new Map();
+          } else {
+              newState.individualLimitsMain = new Map();
+              newState.groupLimitsMain = new Map();
+          }
           return { ...current, [type]: newState };
       });
       
@@ -1769,7 +1848,7 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
     const safeBets: Bet[] = [];
     const overLimitBets: Bet[] = [];
     const currentData = this.lotteryData();
-    const currentIndLimits = this.individualLimits();
+    const currentEffectiveLimits = this.effectiveLimits();
     const currentDefLimit = this.defaultLimit();
 
     const tempCurrentDataMap = new Map<string, number>();
@@ -1783,7 +1862,7 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
         const amount = bet.amount;
         
         const existingAmount = tempCurrentDataMap.get(number) || 0;
-        const limit = currentIndLimits.get(number) ?? currentDefLimit;
+        const limit = currentEffectiveLimits.get(number) ?? currentDefLimit;
         
         if (existingAmount >= limit) {
             overLimitBets.push({ number, amount });
@@ -1971,9 +2050,9 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
 
     if (num.length !== requiredLength || isNaN(parseInt(num))) { alert(`ကျေးဇူးပြု၍ ဂဏန်း ${requiredLength} လုံးကို မှန်ကန်စွာထည့်ပါ။`); return; }
     
-    const currentIndLimits = this.individualLimits();
+    const currentEffectiveLimits = this.effectiveLimits();
     const currentDefLimit = this.defaultLimit();
-    const limit = currentIndLimits.get(num) ?? currentDefLimit;
+    const limit = currentEffectiveLimits.get(num) ?? currentDefLimit;
 
     const cell = (type === '2D' ? this.gridCells() : this.listItems()).find(c => c.number === num);
     const winningBetsBreakdown = cell ? cell.breakdown : [];
@@ -2152,7 +2231,9 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
 
         // Use appropriate limits for report snapshot
         let reportDefaultLimit = this.defaultLimit();
-        let reportIndividualLimits: [string, number][] = Array.from(this.individualLimits().entries());
+        
+        // Note: For reports, we still snapshot the effective limits map as entries so older reports are compatible
+        let reportIndividualLimits: [string, number][] = Array.from(this.effectiveLimits().entries());
 
         const report: Report = {
             id: `report_${new Date().toISOString()}_${this.activeMode()}_${type === '2D' ? this.session() : this.drawDate()}_${type}`,
@@ -2260,11 +2341,14 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
         
         if (targetMode === 'အလယ်ဒိုင်') {
             newState.defaultLimitMiddle = report.defaultLimit;
+            // Restore legacy limits to individual limits as we don't know group structure from report
             newState.individualLimitsMiddle = new Map(report.individualLimits);
+            newState.groupLimitsMiddle = new Map(); // Clear group limits on restore to avoid conflict
             newState.myMiddleBookieName = report.bookieName;
         } else if (targetMode === 'ဒိုင်ကြီး') {
             newState.defaultLimitMain = report.defaultLimit;
             newState.individualLimitsMain = new Map(report.individualLimits);
+            newState.groupLimitsMain = new Map();
             newState.myMainBookieName = report.bookieName;
         } else {
             // Agent
