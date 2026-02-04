@@ -113,6 +113,8 @@ interface AppState {
     agentInputs?: Record<string, string>;   
 }
 
+declare var html2canvas: any;
+
 @Component({
   selector: 'app-code-analyzer',
   templateUrl: './code-analyzer.component.html',
@@ -246,6 +248,7 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
   // --- Messaging State ---
   confirmationMessage = signal('');
   statusMessage = signal('');
+  isGeneratingImage = signal(false);
   
   // --- Profit Optimizer State ---
   profitOptimizerSuggestion = signal<ProfitOptimizerSuggestion | null>(null);
@@ -2710,5 +2713,59 @@ export class CodeAnalyzerComponent implements OnInit, OnDestroy {
           }
       }));
       this.showVoucherSettings.set(false);
+  }
+
+  async copyForwardableListAsImage() {
+      if (typeof html2canvas === 'undefined') {
+          alert('Error: Image generation library not loaded.');
+          return;
+      }
+      const list = this.forwardableOverLimitNumbers();
+      if (list.length === 0) {
+          this.statusMessage.set('ထုတ်ရန် စာရင်းမရှိပါ။');
+          return;
+      }
+
+      this.isGeneratingImage.set(true);
+      
+      // Wait for DOM update
+      setTimeout(async () => {
+          const element = document.getElementById('forward-voucher-capture');
+          if (!element) {
+              this.isGeneratingImage.set(false);
+              return;
+          }
+
+          try {
+              const canvas = await html2canvas(element, {
+                  scale: 2,
+                  backgroundColor: '#1e293b', 
+                  logging: false,
+                  useCORS: true
+              });
+
+              canvas.toBlob(async (blob: Blob | null) => {
+                  if(!blob) {
+                      this.statusMessage.set('Image generation failed.');
+                      return;
+                  }
+                  try {
+                      await navigator.clipboard.write([
+                          new ClipboardItem({ 'image/png': blob })
+                      ]);
+                      this.statusMessage.set('Img Copy ကူးပြီးပါပြီ! Messenger တွင် Paste (Ctrl+V) ချနိုင်ပါပြီ။');
+                  } catch (err) {
+                      console.error(err);
+                      this.statusMessage.set('Clipboard Error: HTTPS required.');
+                  }
+                  setTimeout(() => this.statusMessage.set(''), 4000);
+                  this.isGeneratingImage.set(false);
+              }, 'image/png');
+          } catch (e) {
+              console.error(e);
+              this.isGeneratingImage.set(false);
+              this.statusMessage.set('Error generating image.');
+          }
+      }, 100);
   }
 }
