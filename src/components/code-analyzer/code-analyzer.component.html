@@ -1,3 +1,4 @@
+
 <!-- Panic Mode Overlay -->
 @if (isPanicMode()) {
   <div class="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-center font-mono">
@@ -162,7 +163,7 @@
                 <!-- Manage Limits Dropdown -->
                 <div class="flex items-center justify-end relative">
                     <button (click)="toggleCustomLimitsDropdown()" class="bg-blue-600/80 hover:bg-blue-700 text-white text-xs font-bold py-1.5 px-3 rounded transition flex items-center gap-1">
-                        သီးသန့်လစ်မစ်များ ({{ customLimitsList().length }})
+                        သီးသန့်လစ်မစ်များ ({{ limitGroups().length }})
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
                     </button>
                     
@@ -188,18 +189,42 @@
                                   <button (click)="applyBatchLimitChange('set')" class="bg-teal-600 hover:bg-teal-700 text-white text-[10px] py-1 rounded">= ပြင်</button>
                                 </div>
                             </div>
-
+                            
+                            <!-- Groups List -->
                             <div class="max-h-60 overflow-y-auto">
-                                @for (item of customLimitsList(); track item.number) {
-                                    <div class="flex justify-between items-center p-2 border-b border-slate-700/50 hover:bg-slate-700/30 text-xs">
-                                        <div class="font-mono">
-                                            <span class="font-bold text-blue-400 mr-2">{{ item.number }}</span>
-                                            <span class="text-slate-400">=</span>
-                                            <span class="text-white ml-2">{{ item.limit.toLocaleString() }}</span>
+                                @for (group of limitGroups(); track group.id) {
+                                    <div class="border-b border-slate-700/50">
+                                        <!-- Group Header (Toggle) -->
+                                        <div class="flex justify-between items-center p-2 hover:bg-slate-700/30 text-xs bg-slate-900 cursor-pointer" (click)="toggleGroup(group.id)">
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-slate-400 text-[10px]">{{ group.isOpen ? '▼' : '►' }}</span>
+                                                <span class="font-bold text-blue-400">{{ group.name }}</span>
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-white font-mono bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">{{ group.amount.toLocaleString() }}</span>
+                                                <button (click)="removeLimitGroup(group.id); $event.stopPropagation()" class="text-red-400 hover:text-red-300 p-1 rounded hover:bg-slate-800" title="ဖျက်မည်">
+                                                    &times;
+                                                </button>
+                                            </div>
                                         </div>
-                                        <button (click)="removeIndividualLimit(item.number)" class="text-red-400 hover:text-red-300 p-1 rounded hover:bg-slate-700">
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                                        </button>
+                                        
+                                        <!-- Expanded Content (Numbers List + Edit) -->
+                                        @if (group.isOpen) {
+                                            <div class="bg-slate-800/50 p-2 text-[10px] border-t border-slate-700/30 animate-fade-in-down">
+                                                <!-- Inline Edit Amount -->
+                                                <div class="flex items-center gap-2 mb-2 pb-2 border-b border-slate-700/30">
+                                                    <span class="text-slate-400">ပြင်ရန်:</span>
+                                                    <input type="number" [value]="group.amount" (change)="updateGroupAmount(group.id, +$any($event.target).value)" 
+                                                           class="w-16 bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-white">
+                                                </div>
+                                                <!-- List of numbers -->
+                                                <div class="flex flex-wrap gap-1">
+                                                    @for (num of group.numbers; track num) {
+                                                        <span class="bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-mono border border-slate-600">{{ num }}</span>
+                                                    }
+                                                </div>
+                                            </div>
+                                        }
                                     </div>
                                 } @empty {
                                     <div class="p-4 text-center text-xs text-slate-500">သီးသန့်လစ်မစ် မရှိသေးပါ</div>
@@ -622,7 +647,7 @@
     <div style="text-align: center; margin-bottom: 10px; border-bottom: 2px solid black; padding-bottom: 10px;">
         <h3 style="margin: 0; font-size: 32px; font-weight: bold;">--- {{ bookieName() }} ---</h3>
         <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: bold; color: #444;">
-            နေ့စွဲ: {{ lotteryType() === '3D' ? formatDate(drawDate()) : (session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း') }}
+            နေ့စွဲ: {{ imageGenerationTime() || (lotteryType() === '3D' ? formatDate(drawDate()) : (session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း')) }}
         </p>
     </div>
     
@@ -689,11 +714,6 @@
             </div>
             
             <div class="flex justify-end gap-2">
-                @if (limitManageNumber()) {
-                    <button (click)="removeBatchLimits()" class="bg-red-600 hover:bg-red-700 text-white text-sm font-bold py-2 px-4 rounded transition">
-                        Reset / Clear
-                    </button>
-                }
                 <button (click)="closeLimitModal()" class="bg-slate-600 hover:bg-slate-700 text-white text-sm font-bold py-2 px-4 rounded transition">
                     ပိတ်မည်
                 </button>
@@ -922,18 +942,18 @@
                                                 <span class="text-xs text-slate-500">{{ p.overLimitWinBetAmount.toLocaleString() }}</span>
                                                 <span>{{ p.overLimitWinAmount > 0 ? '(' + p.overLimitWinAmount.toLocaleString() + ')' : '-' }}</span>
                                             </div>
-                                         </td>
+                                        </td>
 
-                                         <!-- Actual Held Payout -->
-                                         <td class="py-2 text-right align-top font-bold text-red-500 print:text-red-600 text-sm">
+                                        <!-- Actual Held Payout -->
+                                        <td class="py-2 text-right align-top font-bold text-red-500 print:text-red-600 text-sm">
                                             <div class="flex flex-col">
                                                 <span class="text-xs text-slate-400 font-normal">{{ p.heldWinBetAmount.toLocaleString() }}</span>
                                                 <span>{{ p.payout > 0 ? p.payout.toLocaleString() : '-' }}</span>
                                             </div>
-                                         </td>
+                                        </td>
 
-                                         <!-- Balance -->
-                                         <td class="py-2 text-right align-top font-bold text-base" [class]="p.finalBalance >= 0 ? 'text-green-400 print:text-green-600' : 'text-red-400 print:text-red-600'">
+                                        <!-- Balance -->
+                                        <td class="py-2 text-right align-top font-bold text-base" [class]="p.finalBalance >= 0 ? 'text-green-400 print:text-green-600' : 'text-red-400 print:text-red-600'">
                                             {{ p.finalBalance.toLocaleString() }}
                                          </td>
                                      </tr>

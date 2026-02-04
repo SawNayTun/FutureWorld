@@ -1,3 +1,4 @@
+
 import { Component, ChangeDetectionStrategy, input, output, signal, OnInit, computed, effect } from '@angular/core';
 import { UpperBookie } from '../../models/app.models';
 
@@ -26,6 +27,7 @@ export class ForwardingModalComponent implements OnInit {
   draggedBet = signal<{ from: string, bet: Bet } | null>(null);
   dragOverBookie = signal<string | null>(null);
   copiedMessage = signal('');
+  captureTime = signal('');
 
   bookieKeys = computed(() => Object.keys(this.assignments()));
 
@@ -209,42 +211,45 @@ export class ForwardingModalComponent implements OnInit {
       }
 
       this.copiedMessage.set('ပုံထုတ်နေသည်... (Generating Image)');
+      this.captureTime.set(this.formatDateForVoucher(new Date()));
 
-      try {
-          // 1. Generate Canvas from DOM
-          const canvas = await html2canvas(element, {
-              scale: 2, // Higher resolution for better readability
-              backgroundColor: '#ffffff', // White Background as requested
-              logging: false,
-              useCORS: true
-          });
+      setTimeout(async () => {
+        try {
+            // 1. Generate Canvas from DOM
+            const canvas = await html2canvas(element, {
+                scale: 1.5, // Reduced scale for speed (was 2)
+                backgroundColor: '#ffffff', // White Background as requested
+                logging: false,
+                useCORS: true
+            });
 
-          // 2. Convert to Blob
-          canvas.toBlob(async (blob: Blob | null) => {
-              if(!blob) {
-                  this.copiedMessage.set('Image generation failed.');
-                  return;
-              }
+            // 2. Convert to Blob
+            canvas.toBlob(async (blob: Blob | null) => {
+                if(!blob) {
+                    this.copiedMessage.set('Image generation failed.');
+                    return;
+                }
 
-              // 3. Write to Clipboard
-              try {
-                  // This requires Secure Context (HTTPS or Localhost)
-                  await navigator.clipboard.write([
-                      new ClipboardItem({ 'image/png': blob })
-                  ]);
-                  this.copiedMessage.set('ပုံ Copy ကူးပြီးပါပြီ! Messenger တွင် Paste (Ctrl+V) ချနိုင်ပါပြီ။');
-              } catch (err) {
-                  console.error('Clipboard write failed', err);
-                  this.copiedMessage.set('Clipboard Error: HTTPS လိုအပ်ပါသည်။');
-              }
-              
-              setTimeout(() => this.copiedMessage.set(''), 4000);
-          }, 'image/png');
+                // 3. Write to Clipboard
+                try {
+                    // This requires Secure Context (HTTPS or Localhost)
+                    await navigator.clipboard.write([
+                        new ClipboardItem({ 'image/png': blob })
+                    ]);
+                    this.copiedMessage.set('ပုံ Copy ကူးပြီးပါပြီ! Messenger တွင် Paste (Ctrl+V) ချနိုင်ပါပြီ။');
+                } catch (err) {
+                    console.error('Clipboard write failed', err);
+                    this.copiedMessage.set('Clipboard Error: HTTPS လိုအပ်ပါသည်။');
+                }
+                
+                setTimeout(() => this.copiedMessage.set(''), 4000);
+            }, 'image/png');
 
-      } catch (e) {
-          console.error(e);
-          this.copiedMessage.set('Error generating image.');
-      }
+        } catch (e) {
+            console.error(e);
+            this.copiedMessage.set('Error generating image.');
+        }
+      }, 50); // Slight delay for rendering
   }
 
   private copyToClipboard(text: string): void {
@@ -258,6 +263,13 @@ export class ForwardingModalComponent implements OnInit {
   formatDate(isoString: string): string {
     if (!isoString) return '';
     return new Date(isoString).toLocaleDateString('en-CA');
+  }
+
+  formatDateForVoucher(date: Date): string {
+      return date.toLocaleString('en-GB', { 
+          day: '2-digit', month: '2-digit', year: 'numeric',
+          hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true 
+      });
   }
 
   closePanel(save: boolean): void {

@@ -7,7 +7,7 @@ import { LicenseService } from '../../services/license.service';
 import { VoiceRecognitionService } from '../../services/voice-recognition.service';
 import { PersistenceService } from '../../services/persistence.service';
 import { 
-  GridCell, BetDetail, VoucherSettings, Report, Agent, UpperBookie 
+  GridCell, BetDetail, VoucherSettings, Report, Agent, UpperBookie, LimitGroup 
 } from '../../models/app.models';
 
 import { SummaryCardComponent } from '../summary-card/summary-card.component';
@@ -78,7 +78,22 @@ export class CodeAnalyzerComponent implements OnInit {
   // --- Data ---
   userInput = signal('');
   history = signal<HistoryEntry[]>([]);
-  customLimits = signal<Map<string, number>>(new Map()); // Key: Number, Value: Limit
+  
+  // New Limit Group System
+  limitGroups = signal<LimitGroup[]>([]);
+  
+  // Computed Map for calculations (derived from groups)
+  customLimits = computed<Map<string, number>>(() => {
+      const map = new Map<string, number>();
+      // Process groups in order. Later groups overwrite earlier ones if there's overlap.
+      // This allows users to set "All = 500" then "Apu = 1000".
+      this.limitGroups().forEach(group => {
+          group.numbers.forEach(num => {
+              map.set(num, group.amount);
+          });
+      });
+      return map;
+  });
   
   // --- Agents & Bookies Management ---
   agents = signal<Agent[]>([]);
@@ -104,8 +119,10 @@ export class CodeAnalyzerComponent implements OnInit {
   // --- UI Temporary State ---
   statusMessage = signal('');
   isGeneratingImage = signal(false);
+  imageGenerationTime = signal(''); 
   search3DTerm = signal('');
-  batchLimitAmount = signal<number>(0);
+  
+  batchLimitAmount = signal<number>(0); // Added back for batch modification
   limitManageNumber = signal('');
   limitManageAmount = signal(0);
   
@@ -165,8 +182,7 @@ export class CodeAnalyzerComponent implements OnInit {
 
     // Auto-save effect
     effect(() => {
-        // Simple auto-save trigger on key changes if needed
-        // For performance, we usually do this on specific actions (add/delete)
+        // Simple auto-save trigger
     });
   }
 
@@ -195,16 +211,10 @@ export class CodeAnalyzerComponent implements OnInit {
     return { totals, breakdown };
   });
 
-  customLimitsList = computed(() => {
-      const list: {number: string, limit: number}[] = [];
-      this.customLimits().forEach((val, key) => list.push({number: key, limit: val}));
-      return list.sort((a,b) => a.number.localeCompare(b.number));
-  });
-
   gridCells = computed<GridCell[]>(() => {
     const { totals, breakdown } = this.aggregatedBets();
     const defLimit = this.defaultLimit();
-    const custom = this.customLimits();
+    const custom = this.customLimits(); // This is now a computed map from groups
     const cells: GridCell[] = [];
     const is3D = this.lotteryType() === '3D';
     
@@ -397,7 +407,7 @@ export class CodeAnalyzerComponent implements OnInit {
   setLotteryType(type: '2D' | '3D') {
       this.lotteryType.set(type);
       this.history.set([]); 
-      this.customLimits.set(new Map());
+      this.limitGroups.set([]); // Clear limits on type change
       this.acknowledgedOverLimits.set(new Map());
       this.heldOverLimits.set(new Map());
       this.saveToStorage();
@@ -467,7 +477,7 @@ export class CodeAnalyzerComponent implements OnInit {
   undoLastBet() {
       this.history.update(h => h.slice(1));
       this.saveToStorage();
-      this.sanitizeOverLimitMaps(); // Fix: Sanitize maps after undo
+      this.sanitizeOverLimitMaps(); 
   }
 
   clearAllBets() {
@@ -491,7 +501,7 @@ export class CodeAnalyzerComponent implements OnInit {
   deleteHistoryEntry(id: string) {
       this.history.update(h => h.filter(x => x.id !== id));
       this.saveToStorage();
-      this.sanitizeOverLimitMaps(); // Fix: Sanitize maps after delete
+      this.sanitizeOverLimitMaps();
   }
 
   // --- Helper: Ensure acknowledged amounts don't exceed current actual over-limit ---
@@ -595,6 +605,7 @@ export class CodeAnalyzerComponent implements OnInit {
       }
 
       this.isGeneratingImage.set(true);
+      this.imageGenerationTime.set(this.datePipe.transform(new Date(), 'dd/MM/yyyy, h:mm:ss a') || '');
       
       setTimeout(async () => {
           const element = document.getElementById('forward-voucher-capture');
@@ -605,8 +616,8 @@ export class CodeAnalyzerComponent implements OnInit {
 
           try {
               const canvas = await html2canvas(element, {
-                  scale: 2,
-                  backgroundColor: '#1e293b', 
+                  scale: 1.5,
+                  backgroundColor: '#ffffff', 
                   logging: false,
                   useCORS: true
               });
@@ -646,15 +657,15 @@ export class CodeAnalyzerComponent implements OnInit {
               this.isGeneratingImage.set(false);
               this.statusMessage.set('Error generating image.');
           }
-      }, 100);
+      }, 10);
   }
 
   // --- Methods: Persistence ---
   saveToStorage() {
       const data = {
           history: this.history(),
-          customLimits: Array.from(this.customLimits().entries()),
-          // ... other state
+          // Save Limit Groups instead of raw map
+          limitGroups: this.limitGroups()
       };
       this.persistenceService.set('app_state', data);
   }
@@ -663,7 +674,16 @@ export class CodeAnalyzerComponent implements OnInit {
       const data = await this.persistenceService.get<any>('app_state');
       if (data) {
           if (data.history) this.history.set(data.history);
-          if (data.customLimits) this.customLimits.set(new Map(data.customLimits));
+          // Restore limit groups
+          if (data.limitGroups) {
+              this.limitGroups.set(data.limitGroups);
+          } else if (data.customLimits) {
+              // Backward compatibility: If old map exists but no groups, ignore or try to migrate?
+              // For now, let's start fresh with groups to avoid confusion, or map each key to a group of 1
+              // Ideally, we just clear it or let user re-enter. 
+              // To keep it simple based on request "Fix it", we prioritize the new system.
+              this.limitGroups.set([]);
+          }
       }
       
       const agents = await this.persistenceService.get<Agent[]>('lottery_agents');
@@ -712,7 +732,13 @@ export class CodeAnalyzerComponent implements OnInit {
 
   // --- Methods: Limits Management ---
   toggleCustomLimitsDropdown() { this.showCustomLimitsDropdown.update(v => !v); }
-  clearAllCustomLimits() { this.customLimits.set(new Map()); }
+  
+  clearAllCustomLimits() { 
+      this.limitGroups.set([]);
+      this.saveToStorage();
+      this.sanitizeOverLimitMaps();
+  }
+  
   openLimitModal(num?: string) { 
       if(num) this.limitManageNumber.set(num);
       else this.limitManageNumber.set('');
@@ -720,60 +746,77 @@ export class CodeAnalyzerComponent implements OnInit {
   }
   closeLimitModal() { this.showLimitManagementModal.set(false); }
   
+  // Create Limit Group
   saveIndividualLimit() {
-      const num = this.limitManageNumber();
+      const name = this.limitManageNumber();
       const amt = this.limitManageAmount();
-      if (num) {
-          // Simplified: split by comma/space
-          const tokens = num.split(/[\s,]+/).filter(x => x);
-          this.customLimits.update(m => {
-              const newMap = new Map(m);
-              tokens.forEach(t => {
-                   if (!isNaN(parseInt(t))) newMap.set(t, amt);
-              });
-              return newMap;
-          });
-      } else if (!num && amt > 0) {
+      
+      if (name) {
+          // Use parser to get all numbers associated with this name (e.g. apu -> 00, 11...)
+          // We use dummy amount '1' just to get the keys
+          const dummyInput = `${name} 1`; 
+          const results = this.betParsingService.parseRaw(dummyInput, this.lotteryType());
+          
+          if (results.length > 0) {
+              const numbers = Array.from(new Set(results.map(r => r.number))).sort();
+              
+              const newGroup: LimitGroup = {
+                  id: Date.now().toString(),
+                  name: name,
+                  amount: amt,
+                  numbers: numbers,
+                  isOpen: false
+              };
+
+              this.limitGroups.update(groups => [newGroup, ...groups]);
+          }
+      } else if (!name && amt > 0) {
           this.defaultLimit.set(amt);
       }
-      this.sanitizeOverLimitMaps(); // Fix: Sanitize maps after limit change
+      
+      this.saveToStorage();
+      this.sanitizeOverLimitMaps();
       this.closeLimitModal();
   }
   
-  removeIndividualLimit(num: string) {
-      this.customLimits.update(m => {
-          const newMap = new Map(m);
-          newMap.delete(num);
-          return newMap;
-      });
-      this.sanitizeOverLimitMaps(); // Fix: Sanitize maps after limit change
+  removeLimitGroup(id: string) {
+      this.limitGroups.update(groups => groups.filter(g => g.id !== id));
+      this.saveToStorage();
+      this.sanitizeOverLimitMaps();
+  }
+
+  updateGroupAmount(id: string, newAmount: number) {
+      this.limitGroups.update(groups => groups.map(g => {
+          if (g.id === id) return { ...g, amount: newAmount };
+          return g;
+      }));
+      this.saveToStorage();
+      this.sanitizeOverLimitMaps();
+  }
+
+  toggleGroup(id: string) {
+      this.limitGroups.update(groups => groups.map(g => {
+          if (g.id === id) return { ...g, isOpen: !g.isOpen };
+          return g;
+      }));
   }
 
   applyBatchLimitChange(type: 'add' | 'sub' | 'set') {
       const val = this.batchLimitAmount();
-      if (val <= 0) return;
-      this.customLimits.update(m => {
-          const newMap = new Map(m);
-          for (const key of newMap.keys()) {
-              const current = newMap.get(key) || 0;
-              if (type === 'add') newMap.set(key, current + val);
-              if (type === 'sub') newMap.set(key, Math.max(0, current - val));
-              if (type === 'set') newMap.set(key, val);
-          }
-          return newMap;
-      });
-      this.sanitizeOverLimitMaps(); // Fix: Sanitize maps after batch limit change
-  }
-  
-  removeBatchLimits() {
-      const nums = this.limitManageNumber().split(/[,\s]+/).filter(x => x);
-      this.customLimits.update(m => {
-          const newMap = new Map(m);
-          nums.forEach(n => newMap.delete(n));
-          return newMap;
-      });
-      this.sanitizeOverLimitMaps(); // Fix: Sanitize maps after limit removal
-      this.closeLimitModal();
+      if (val <= 0 && type !== 'set') return;
+      if (val < 0) return;
+
+      this.limitGroups.update(groups => groups.map(g => {
+          let newAmount = g.amount;
+          if (type === 'add') newAmount += val;
+          if (type === 'sub') newAmount = Math.max(0, newAmount - val);
+          if (type === 'set') newAmount = val;
+          
+          return { ...g, amount: newAmount };
+      }));
+      
+      this.saveToStorage();
+      this.sanitizeOverLimitMaps();
   }
 
   // --- Agent Profile ---
@@ -843,7 +886,6 @@ export class CodeAnalyzerComponent implements OnInit {
       const grid = this.gridCells();
       const winCell = grid.find(c => c.number === win);
       
-      // Ensure we are working with numbers to prevent "left-hand side of arithmetic operation" errors
       const cellAmount = winCell ? winCell.amount : 0;
       const cellOverLimit = winCell ? winCell.overLimitAmount : 0;
       const totalHeldWin = cellAmount - cellOverLimit;
@@ -881,7 +923,7 @@ export class CodeAnalyzerComponent implements OnInit {
           }).filter(entry => entry.bets.length > 0);
       });
       this.saveToStorage();
-      this.sanitizeOverLimitMaps(); // Fix: Sanitize maps after delete from detail
+      this.sanitizeOverLimitMaps();
       this.openBetDetailModal(this.selectedNumberForDetail());
   }
 

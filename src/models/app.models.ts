@@ -28,6 +28,14 @@ export interface GridCell {
   limit: number;
 }
 
+export interface LimitGroup {
+  id: string;
+  name: string; // The input string (e.g., "apu", "12r", "00 01")
+  amount: number;
+  numbers: string[]; // The expanded numbers belonging to this group
+  isOpen?: boolean; // For UI toggle state
+}
+
 export interface VoucherSettings {
   headerText: string;
   footerText: string;
