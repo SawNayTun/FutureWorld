@@ -352,39 +352,45 @@ export class CodeAnalyzerComponent implements OnInit {
       return this.history().map(h => h.input);
   });
 
-  // --- Real-time Risk Analysis (Worst Case Scenario) ---
+  // --- Real-time Risk Analysis (Updated to prioritize Total Amount display but Held Amount calculation) ---
   worstCaseScenario = computed(() => {
       const cells = this.gridCells();
       const rate = this.payoutRate();
       const currentNet = this.netAmount();
 
-      // Find the Max Held Amount first
-      let maxHeldAmount = 0;
+      // 1. Find the Max TOTAL Bet amount (Popularity)
+      let maxTotalBet = 0;
       for (const cell of cells) {
-          const held = cell.amount - cell.overLimitAmount;
-          if (held > maxHeldAmount) {
-              maxHeldAmount = held;
+          if (cell.amount > maxTotalBet) {
+              maxTotalBet = cell.amount;
           }
       }
 
-      if (maxHeldAmount === 0) return null;
+      if (maxTotalBet === 0) return null;
 
-      // Find ALL numbers that match this max held amount
-      const riskNumbers: string[] = [];
+      // 2. Identify ALL numbers that have this Max Total Bet
+      const popularNumbers: string[] = [];
+      // Also find the max held amount AMONG these popular numbers to calculate the worst case scenario for THEM
+      let maxHeldAmongPopular = 0;
+
       for (const cell of cells) {
-          const held = cell.amount - cell.overLimitAmount;
-          if (held === maxHeldAmount) {
-              riskNumbers.push(cell.number);
+          if (cell.amount === maxTotalBet) {
+              popularNumbers.push(cell.number);
+              const held = cell.amount - cell.overLimitAmount;
+              if (held > maxHeldAmongPopular) {
+                  maxHeldAmongPopular = held;
+              }
           }
       }
 
-      // Calculate liabilities based ONLY on Held Amount
-      const potentialPayout = maxHeldAmount * rate;
+      // 3. Calculate liabilities based ONLY on Held Amount of the most popular number(s)
+      const potentialPayout = maxHeldAmongPopular * rate;
       const projectedNet = currentNet - potentialPayout;
 
       return {
-          numbers: riskNumbers,
-          heldAmount: maxHeldAmount,
+          numbers: popularNumbers,
+          totalAmount: maxTotalBet,
+          heldAmount: maxHeldAmongPopular,
           potentialPayout: potentialPayout,
           projectedNet: projectedNet,
           isRisk: projectedNet < 0
@@ -395,20 +401,32 @@ export class CodeAnalyzerComponent implements OnInit {
      const totalIncome = this.totalHeldAmount(); 
      const rate = this.payoutRate();
      
-     const risks = this.gridCells()
+     // Calculate global max total bet for highlighting
+     let maxTotalBet = 0;
+     const cells = this.gridCells();
+     cells.forEach(c => {
+         if (c.amount > maxTotalBet) maxTotalBet = c.amount;
+     });
+
+     const risks = cells
         .filter(c => c.amount > 0)
         .map(cell => {
             const heldBetOnThis = cell.amount - cell.overLimitAmount; 
             const payout = heldBetOnThis * rate;
             const net = totalIncome - payout;
+            
             return {
                 number: cell.number,
+                totalAmount: cell.amount, // Include Total for display
+                isMaxTotalBet: cell.amount === maxTotalBet && maxTotalBet > 0, // Flag for Red Color
                 totalHeld: heldBetOnThis,
                 estimatedPayout: payout,
                 netProfitLoss: net
             };
         });
-     return risks.sort((a,b) => a.netProfitLoss - b.netProfitLoss).slice(0, 10);
+     
+     // Sort by Financial Loss (Net Profit Loss Ascending)
+     return risks.sort((a,b) => a.netProfitLoss - b.netProfitLoss).slice(0, 15);
   });
   
   agentsWithPerformance = computed(() => {
@@ -1304,7 +1322,7 @@ export class CodeAnalyzerComponent implements OnInit {
           commissionToPay: this.commissionToPay(),
           agentCommissionFromBookie: 0,
           commissionFromUpperBookie: this.commissionFromUpperBookie(),
-          individualLimits: [] as [string, number][],
+          individualLimits: [],
           upperBookies: this.upperBookies(),
           agents: this.agents(),
           currencySymbol: this.currencySymbol()
@@ -1319,7 +1337,7 @@ export class CodeAnalyzerComponent implements OnInit {
       this.history.set([]); 
       // Ensure r.betHistory is treated as array and cast properly to avoid type errors
       if (r.betHistory && Array.isArray(r.betHistory)) {
-          (r.betHistory as any[]).forEach((input: any) => {
+          r.betHistory.forEach((input) => {
              // Safe check to ensure we only process strings
              if (typeof input === 'string') {
                  const bets = this.betParsingService.parseRaw(input, r.lotteryType);
