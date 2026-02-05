@@ -1,6 +1,8 @@
 
 
 
+
+
 <!-- Panic Mode Overlay -->
 @if (isPanicMode()) {
   <div class="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-center font-mono">
@@ -419,6 +421,21 @@
 
            <section class="bg-slate-800/90 rounded-lg p-4 border border-slate-700 no-print">
                 @if(statusMessage()) { <div class="mb-2 p-2 rounded text-center text-sm" [class]="statusMessage().includes('အောင်မြင်') ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'">{{ statusMessage() }}</div> }
+                
+                <!-- Risk Warning Banner -->
+                @if(licenseService.isAdmin()) {
+                  @if(worstCaseScenario(); as scenario) {
+                    @if(scenario.isRisk) {
+                        <div class="mb-2 bg-red-900/80 border border-red-500 text-white p-2 rounded flex items-center gap-2 animate-pulse">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-300" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                        <span class="text-sm font-bold">
+                            သတိပြုရန်: ဂဏန်း [{{ scenario.numbers.join(', ') }}] ပေါက်ပါက {{ scenario.projectedNet.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }} ရှုံးနိုင်ချေရှိသည်။
+                        </span>
+                        </div>
+                    }
+                  }
+                }
+
                 <div class="flex flex-col gap-2">
                     <div class="relative">
                       <textarea #mainBetInput id="main-bet-input" [ngModel]="userInput()" (ngModelChange)="updateCurrentState('userInput', $event)" (keydown)="onInputKeydown($event)" placeholder="ဥပမာ: 12r 500, apu 100, nk 50&#10;Enter ဖြင့် စာရင်းထည့်သွင်းပြီး Shift+Enter ဖြင့် လိုင်းဆင်းပါ။" class="w-full h-24 bg-slate-900 border border-slate-600 rounded px-3 py-2 focus:ring-yellow-500 resize-y pr-10"></textarea>
@@ -482,6 +499,20 @@
                       </p>
                     </div>
                 </div>
+
+                @if(licenseService.isAdmin()) {
+                    @if(worstCaseScenario(); as risk) {
+                        <div class="col-span-2 mt-2 pt-2 border-t border-slate-700">
+                            <p class="text-xs text-slate-400 mb-1">Risk အခြေအနေ (Worst Case)</p>
+                            <div class="bg-slate-900/70 p-2 rounded-lg flex justify-between items-end">
+                                <span class="text-xs text-slate-300">ပေါက်ဂဏန်း: <b class="text-white text-lg ml-1">[{{risk.numbers.join(', ')}}]</b></span>
+                                <span class="font-mono font-bold text-base" [class]="risk.isRisk ? 'text-red-500' : 'text-green-500'">
+                                    {{ risk.projectedNet.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }} {{ currencySymbol() }}
+                                </span>
+                            </div>
+                        </div>
+                    }
+                }
             </div>
         </section>
 
@@ -861,7 +892,7 @@
                                         <!-- Balance -->
                                         <td class="py-2 text-right align-top font-bold text-base" [class]="p.finalBalance >= 0 ? 'text-green-400 print:text-green-600' : 'text-red-400 print:text-red-600'">
                                             {{ p.finalBalance.toLocaleString() }}
-                                         </td>
+                                        </td>
                                      </tr>
                                  }
                              </tbody>
@@ -1067,4 +1098,3 @@
         [currencySymbol]="currencySymbol()"
         (close)="handleForwardingModalClose($event)" />
 }
-        

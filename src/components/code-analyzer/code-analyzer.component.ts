@@ -183,7 +183,8 @@ export class CodeAnalyzerComponent implements OnInit {
         if(len > 0 && this.historyContainer?.nativeElement) {
             setTimeout(() => {
                 try {
-                    this.historyContainer.nativeElement.scrollTop = this.historyContainer.nativeElement.scrollHeight;
+                    // Scroll to top because newest items are now at the top
+                    this.historyContainer.nativeElement.scrollTop = 0;
                 } catch(e) {}
             }, 50);
         }
@@ -282,7 +283,8 @@ export class CodeAnalyzerComponent implements OnInit {
   });
 
   recentHistory = computed(() => {
-      return this.history().slice(-20);
+      // Reverse to show newest first
+      return this.history().slice(-20).reverse();
   });
 
   // --- Computed: Financials & Over Limits ---
@@ -348,6 +350,45 @@ export class CodeAnalyzerComponent implements OnInit {
 
   pendingSubmissions = computed(() => {
       return this.history().map(h => h.input);
+  });
+
+  // --- Real-time Risk Analysis (Worst Case Scenario) ---
+  worstCaseScenario = computed(() => {
+      const cells = this.gridCells();
+      const rate = this.payoutRate();
+      const currentNet = this.netAmount();
+
+      // Find the Max Held Amount first
+      let maxHeldAmount = 0;
+      for (const cell of cells) {
+          const held = cell.amount - cell.overLimitAmount;
+          if (held > maxHeldAmount) {
+              maxHeldAmount = held;
+          }
+      }
+
+      if (maxHeldAmount === 0) return null;
+
+      // Find ALL numbers that match this max held amount
+      const riskNumbers: string[] = [];
+      for (const cell of cells) {
+          const held = cell.amount - cell.overLimitAmount;
+          if (held === maxHeldAmount) {
+              riskNumbers.push(cell.number);
+          }
+      }
+
+      // Calculate liabilities based ONLY on Held Amount
+      const potentialPayout = maxHeldAmount * rate;
+      const projectedNet = currentNet - potentialPayout;
+
+      return {
+          numbers: riskNumbers,
+          heldAmount: maxHeldAmount,
+          potentialPayout: potentialPayout,
+          projectedNet: projectedNet,
+          isRisk: projectedNet < 0
+      };
   });
 
   riskAnalysis = computed(() => {
@@ -1256,7 +1297,7 @@ export class CodeAnalyzerComponent implements OnInit {
           agentCommissionEarned: 0, // No longer applicable
           netAmount: this.netAmount(),
           lotteryData: this.gridCells().filter(c => c.amount > 0).map(c => [c.number, c.amount] as [string, number]),
-          betHistory: this.history().map((h: HistoryEntry) => String(h.input)) as string[],
+          betHistory: this.history().map(h => h.input),
           bookieName: this.bookieName(),
           defaultLimit: this.defaultLimit(),
           payoutRate: this.payoutRate(),
