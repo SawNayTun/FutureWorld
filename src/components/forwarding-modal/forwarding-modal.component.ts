@@ -1,5 +1,6 @@
 
-import { Component, ChangeDetectionStrategy, input, output, signal, OnInit, computed, effect } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, output, signal, OnInit, computed, effect, inject } from '@angular/core';
+import { CommonModule, DatePipe } from '@angular/common';
 import { UpperBookie } from '../../models/app.models';
 
 // FIX: Export Bet and Assignments types so they can be imported by other components.
@@ -11,9 +12,15 @@ declare var html2canvas: any;
 @Component({
   selector: 'app-forwarding-modal',
   templateUrl: './forwarding-modal.component.html',
+  styleUrls: ['./forwarding-modal.component.css'],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: true,
+  imports: [CommonModule],
+  providers: [DatePipe]
 })
 export class ForwardingModalComponent implements OnInit {
+  private datePipe = inject(DatePipe);
+
   overLimitNumbers = input.required<{ number: string, amount: number }[]>();
   upperBookies = input.required<UpperBookie[]>();
   bookieName = input.required<string>();
@@ -172,24 +179,39 @@ export class ForwardingModalComponent implements OnInit {
 
     const header = `--- ${bookieNameToFormat} ---`;
     
-    const today = new Date().toLocaleDateString('en-CA');
-    let dateLine = `နေ့စွဲ: ${this.lotteryType() === '3D' ? this.formatDate(this.drawDate()) : today}`;
+    // Date
+    let dateLine = '';
     if (this.lotteryType() === '2D') {
+        const d = new Date();
+        const dateStr = this.datePipe.transform(d, 'dd/MM/yyyy');
         const sessionText = this.session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း';
-        dateLine += ` (${sessionText})`;
+        dateLine = `နေ့စွဲ - ${dateStr} (${sessionText})`;
+    } else {
+        const d = new Date(this.drawDate());
+        const dateStr = !isNaN(d.getTime()) ? this.datePipe.transform(d, 'dd/MM/yyyy') : this.drawDate();
+        dateLine = `နေ့စွဲ - ${dateStr}`;
     }
 
     const separator = '--------------------';
-    
     const totalAmount = this.getBookieTotal(bookieNameToFormat);
     const totalCount = bets.length;
-
     const sortedBets = [...bets].sort((a, b) => a.number.localeCompare(b.number));
-    const body = sortedBets.map(bet => `${bet.number} = ${bet.amount.toLocaleString()}`).join('\n');
     
-    const footer = `စုစုပေါင်း (${totalCount}) ကွက်: ${totalAmount.toLocaleString()} ${this.currencySymbol()}`;
+    let body = `${separator}\n`;
+    
+    sortedBets.forEach((bet, index) => {
+        body += `${bet.number} = ${bet.amount.toLocaleString()}\n`;
+        // Add separator after every 10 items (but not after the last one)
+        if ((index + 1) % 10 === 0 && (index + 1) < sortedBets.length) {
+            body += `${separator}\n`;
+        }
+    });
+    
+    body += `${separator}\n`;
+    
+    const footer = `စုစုပေါင်း: (${totalCount}) ကွက် - ${totalAmount.toLocaleString()} ${this.currencySymbol()}`;
 
-    return `${header}\n${dateLine}\n${separator}\n${body}\n${separator}\n${footer}`;
+    return `${header}\n${dateLine}\n${body}${footer}`;
   }
 
   copyBookieList(bookieName: string): void {

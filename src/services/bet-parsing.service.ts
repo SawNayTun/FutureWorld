@@ -1,4 +1,3 @@
-
 import { Injectable } from '@angular/core';
 
 // --- Constants ---
@@ -45,6 +44,8 @@ export class BetParsingService {
         // Filter out obvious metadata lines
         if (/^(agent|session|sub-total|total|နေ့စွဲ|date)/i.test(trimmed)) continue;
         if (trimmed.includes('စုစုပေါင်း') || /^total\s*:/i.test(trimmed)) continue;
+        // Ignore separator lines (---, ===, ___) commonly used in vouchers
+        if (/^[-=_]{3,}/.test(trimmed)) continue;
 
         // 1. Pre-process specific Burmese chars (Digits & Keywords) but KEEP delimiters like '='
         const processedLine = this.preProcessBurmese(trimmed);
@@ -275,106 +276,25 @@ export class BetParsingService {
                 else if (['k'].includes(lastChar)) { const digits = Array.from(new Set(firstPart.split(''))); for (let d1 of digits) { for (let d2 of digits) add2D(`${d1}${d2}`, amount); } matched = true; }
                 else if (['v', 'b'].includes(lastChar)) { const targetSum = parseInt(firstPart); if (!isNaN(targetSum) && targetSum >= 0 && targetSum <= 9) { for (let j = 0; j < 100; j++) { const numStr = j.toString().padStart(2, '0'); if ((parseInt(numStr[0], 10) + parseInt(numStr[1], 10)) % 10 === targetSum) add2D(numStr, amount); } matched = true; } }
             }
-            if (!matched && numPart.endsWith('ak')) { 
-                const digitStr = numPart.replace(/ak/g, ''); 
-                if (digitStr.length === 1 && !isNaN(parseInt(digitStr))) { 
-                    const digit = parseInt(digitStr); const prev = (digit + 9) % 10; const next = (digit + 1) % 10; 
-                    add2D(`${digit}${next}`, amount); add2D(`${digit}${prev}`, amount); add2D(`${next}${digit}`, amount); add2D(`${prev}${digit}`, amount); 
-                    matched = true; 
-                } 
-            }
-            if (!matched && numPart.length === 2 && !isNaN(parseInt(numPart))) { add2D(numPart, amount); matched = true; }
-        }
-    } else if (lotteryType === '3D') {
-        // R / Palei (Round/Permutation with Split Amount) - Prioritize short 'r'
-        if (numPart.endsWith('r')) {
-            const baseNum = numPart.replace('r', '');
-            if (baseNum.length === 3 && !isNaN(parseInt(baseNum))) {
-                const perms = this.getUniquePermutations(baseNum);
-                const splitAmount = Math.floor(amount / perms.length);
-                if (splitAmount > 0) {
-                    perms.forEach(p => add3D(p, splitAmount));
-                }
+            if (!matched && numPart.length === 2 && !isNaN(parseInt(numPart))) {
+                add2D(numPart, amount);
                 matched = true;
             }
-        } 
-        // K (Khway/Combinations - Full Amount)
-        else if (numPart.endsWith('k')) {
-             const baseNum = numPart.slice(0, -1);
-             const digits = Array.from(new Set(baseNum.split(''))); // Unique digits
-             if (digits.length >= 1 && !digits.some(d => isNaN(parseInt(d)))) {
-                 for (let d1 of digits) {
-                     for (let d2 of digits) {
-                         for (let d3 of digits) {
-                             add3D(`${d1}${d2}${d3}`, amount);
-                         }
-                     }
-                 }
-                 matched = true;
-             }
         }
-        // T (Head / Hteik)
-        else if (numPart.endsWith('t')) {
-             const digit = numPart.slice(0, -1);
-             if (digit.length === 1 && !isNaN(parseInt(digit))) {
-                 for(let i=0; i<100; i++) {
-                     add3D(`${digit}${i.toString().padStart(2, '0')}`, amount);
-                 }
-                 matched = true;
-             }
-        }
-        // P (End / Peik)
-        else if (numPart.endsWith('p')) {
-             const digit = numPart.slice(0, -1);
-             if (digit.length === 1 && !isNaN(parseInt(digit))) {
-                 for(let i=0; i<100; i++) {
-                     const prefix = i.toString().padStart(2, '0');
-                     add3D(`${prefix}${digit}`, amount);
-                 }
-                 matched = true;
-             }
-        }
-        // B / V (Brake / Sum Modulo)
-        else if (numPart.endsWith('b') || numPart.endsWith('v')) {
-             const digitStr = numPart.slice(0, -1);
-             const target = parseInt(digitStr);
-             if (!isNaN(target) && target >= 0 && target <= 9) {
-                 for (let i=0; i<1000; i++) {
-                     const num = i.toString().padStart(3, '0');
-                     const sum = parseInt(num[0]) + parseInt(num[1]) + parseInt(num[2]);
-                     if (sum % 10 === target) {
-                         add3D(num, amount);
-                     }
-                 }
-                 matched = true;
-             }
-        }
-        // A / A-Par (Contains Digit) - e.g., 5a means any 3D number containing 5
-        else if (numPart.endsWith('a')) {
-             const digit = numPart.slice(0, -1);
-             if (digit.length === 1 && !isNaN(parseInt(digit))) {
-                 for (let i=0; i<1000; i++) {
-                     const num = i.toString().padStart(3, '0');
-                     if (num.includes(digit)) {
-                         add3D(num, amount);
-                     }
-                 }
-                 matched = true;
-             }
-        }
-        // Apu (Doubles/Triples)
-        else if (numPart === 'apu') {
-            for (let j = 0; j < 10; j++) {
-                add3D(`${j}${j}${j}`, amount);
+    } else if (lotteryType === '3D') {
+        if (numPart.endsWith('p')) {
+            const baseNum = numPart.slice(0, -1);
+            if (baseNum.length === 3 && !isNaN(parseInt(baseNum))) {
+                const perms = this.getUniquePermutations(baseNum);
+                perms.forEach(p => add3D(p, amount));
+                matched = true;
             }
-            matched = true;
-        } 
-        // Direct
-        else if (numPart.length === 3 && !isNaN(parseInt(numPart))) {
+        } else if (numPart.length === 3 && !isNaN(parseInt(numPart))) {
             add3D(numPart, amount);
             matched = true;
         }
     }
+    
     return matched;
   }
 }

@@ -562,20 +562,94 @@ export class CodeAnalyzerComponent implements OnInit {
       });
   }
 
-  acknowledgeAllForwardableOverLimits() {
+  // --- HELPER: Generate Voucher Text ---
+  private generateCopyText(items: {number: string, overLimitAmount: number}[]): string {
+      const name = this.bookieName();
+      const now = new Date();
+      // Format: dd/MM/yyyy (h:mm a)
+      const date = this.datePipe.transform(now, 'dd/MM/yyyy (h:mm a)');
+
+      let text = `--- ${name} ---\n`;
+      text += `နေ့စွဲ - ${date}\n`;
+      
+      const separator = '--------------------';
+      
+      // Start with a separator
+      text += `${separator}\n`;
+
+      let total = 0;
+      
+      items.forEach((item, index) => {
+          text += `${item.number} = ${item.overLimitAmount}\n`;
+          total += item.overLimitAmount;
+          
+          // Add separator every 10 items, excluding after the last item
+          if ((index + 1) % 10 === 0 && (index + 1) < items.length) {
+              text += `${separator}\n`;
+          }
+      });
+
+      // End with a separator
+      text += `${separator}\n`;
+      text += `စုစုပေါင်း: (${items.length}) ကွက် - ${total.toLocaleString()} ${this.currencySymbol()}`;
+      return text;
+  }
+
+  // UPDATED: Now copies text before acknowledging
+  async acknowledgeAllForwardableOverLimits() {
       const list = this.forwardableOverLimitNumbers();
-      this.updateAcknowledgedMap(list);
+      if (list.length === 0) return;
+
+      // Use the new helper for formatted text
+      const text = this.generateCopyText(list);
+      
+      try {
+          await navigator.clipboard.writeText(text);
+          this.statusMessage.set('Forward List (စာ) Copy ကူးပြီးပါပြီ။');
+          this.updateAcknowledgedMap(list);
+      } catch (err) {
+          console.error(err);
+          this.statusMessage.set('Copy Error: HTTPS required');
+      }
+      setTimeout(() => this.statusMessage.set(''), 2000);
   }
 
-  acknowledgeAllHeldOverLimits() {
-     // Implementation depends on desired behavior (clear list visually?)
-     // For now, no-op or clear held map?
-     this.heldOverLimits.set(new Map());
+  // UPDATED: Now copies text before clearing
+  async acknowledgeAllHeldOverLimits() {
+     const list = this.heldOverLimitNumbers();
+     if (list.length === 0) return;
+
+     // Use the new helper for formatted text
+     const text = this.generateCopyText(list);
+
+     try {
+         await navigator.clipboard.writeText(text);
+         this.statusMessage.set('Held List (စာ) Copy ကူးပြီးပါပြီ။');
+         this.heldOverLimits.set(new Map());
+     } catch (err) {
+         console.error(err);
+         this.statusMessage.set('Copy Error: HTTPS required');
+     }
+     setTimeout(() => this.statusMessage.set(''), 2000);
   }
 
-  acknowledgeMainBookieOverLimits() {
+  // UPDATED: Now copies text before acknowledging
+  async acknowledgeMainBookieOverLimits() {
       const list = this.displayedOverLimitNumbers();
-      this.updateAcknowledgedMap(list);
+      if (list.length === 0) return;
+
+      // Use the new helper for formatted text
+      const text = this.generateCopyText(list);
+
+      try {
+          await navigator.clipboard.writeText(text);
+          this.statusMessage.set('Over Limit (စာ) Copy ကူးပြီးပါပြီ။');
+          this.updateAcknowledgedMap(list);
+      } catch (err) {
+          console.error(err);
+          this.statusMessage.set('Copy Error: HTTPS required');
+      }
+      setTimeout(() => this.statusMessage.set(''), 2000);
   }
 
   private updateAcknowledgedMap(items: {number: string, overLimitAmount: number}[]) {
@@ -855,6 +929,39 @@ export class CodeAnalyzerComponent implements OnInit {
   }
   
   isInboxSubmitDisabled() { return !this.inboxInput(); }
+
+  updateInboxInput(val: string) {
+      this.inboxInput.set(val);
+      
+      // Attempt to find Agent Name in headers like "--- Name ---"
+      const lines = val.split('\n');
+      for (const line of lines) {
+          const trimmed = line.trim();
+          // Regex to capture text between dashed lines: --- AgentName ---
+          const match = trimmed.match(/^[-=_]{3,}\s*(.+?)\s*[-=_]{3,}$/);
+          if (match) {
+              const detectedName = match[1].trim();
+              if (detectedName) {
+                  // Check if exists
+                  const existing = this.agents().find(a => a.name.toLowerCase() === detectedName.toLowerCase());
+                  if (existing) {
+                      this.selectedAgentForInbox.set(existing.name);
+                  } else {
+                      // Agent doesn't exist. Add it dynamically to allow processing
+                      // User expects auto-listing, so we create the agent to facilitate this.
+                      const newAgent = { name: detectedName, commission: 15 };
+                      this.agents.update(a => [...a, newAgent]);
+                      this.persistenceService.set('lottery_agents', this.agents());
+                      this.selectedAgentForInbox.set(detectedName);
+                      
+                      this.statusMessage.set(`Agent '${detectedName}' အသစ်တွေ့ရှိပြီး ထည့်သွင်းလိုက်သည်။`);
+                      setTimeout(() => this.statusMessage.set(''), 2000);
+                  }
+              }
+              break; // Found header, stop looking
+          }
+      }
+  }
   
   acceptAllFromInbox() {
       this.pendingInboxConfirmation.set(false);
@@ -1025,8 +1132,8 @@ export class CodeAnalyzerComponent implements OnInit {
           receivableCommissionAmount: this.receivableCommissionAmount(),
           agentCommissionEarned: this.agentCommissionEarned(),
           netAmount: this.netAmount(),
-          lotteryData: this.gridCells().filter(c => c.amount > 0).map(c => [c.number, c.amount]),
-          betHistory: this.history().map(h => h.input),
+          lotteryData: this.gridCells().filter(c => c.amount > 0).map(c => [c.number, c.amount] as [string, number]),
+          betHistory: this.history().map((h: HistoryEntry) => h.input),
           bookieName: this.bookieName(),
           defaultLimit: this.defaultLimit(),
           payoutRate: this.payoutRate(),
@@ -1034,8 +1141,8 @@ export class CodeAnalyzerComponent implements OnInit {
           agentCommissionFromBookie: this.agentCommissionFromBookie(),
           commissionFromUpperBookie: this.commissionFromUpperBookie(),
           individualLimits: [],
-          upperBookies: [],
-          agents: [],
+          upperBookies: this.upperBookies(),
+          agents: this.agents(),
           currencySymbol: this.currencySymbol()
       };
       
