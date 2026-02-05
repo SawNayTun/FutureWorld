@@ -1,4 +1,5 @@
 
+
 export interface Agent { 
   name: string; 
   commission: number; 
@@ -14,6 +15,7 @@ export interface BetDetail {
   amount: number; 
   source: string; 
   historyEntryId: string; // Link back to the original HistoryEntry
+  number?: string; // Added to support explicit number storage
 }
 
 export interface GridCell { 

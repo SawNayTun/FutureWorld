@@ -7,7 +7,7 @@ import { LicenseService } from '../../services/license.service';
 import { VoiceRecognitionService } from '../../services/voice-recognition.service';
 import { PersistenceService } from '../../services/persistence.service';
 import { 
-  GridCell, BetDetail, VoucherSettings, Report, Agent, UpperBookie, LimitGroup 
+  GridCell, BetDetail, VoucherSettings, Report as AppReport, Agent, UpperBookie, LimitGroup 
 } from '../../models/app.models';
 
 import { SummaryCardComponent } from '../summary-card/summary-card.component';
@@ -52,6 +52,7 @@ export class CodeAnalyzerComponent implements OnInit {
   private datePipe = inject(DatePipe);
 
   @ViewChild('mainBetInput') mainBetInput!: ElementRef<HTMLTextAreaElement>;
+  @ViewChild('historyContainer') historyContainer!: ElementRef<HTMLDivElement>;
 
   // --- Panic Mode State ---
   isPanicMode = signal(false);
@@ -61,17 +62,17 @@ export class CodeAnalyzerComponent implements OnInit {
   lotteryType = signal<'2D' | '3D'>('2D');
   session = signal<'morning' | 'evening'>('morning');
   drawDate = signal<string>(new Date().toISOString().split('T')[0]);
-  activeMode = signal<string>('အေးဂျင့်'); // 'အေးဂျင့်' | 'အလယ်ဒိုင်' | 'ဒိုင်ကြီး'
-  modes = ['အေးဂျင့်', 'အလယ်ဒိုင်', 'ဒိုင်ကြီး'];
+  
+  // REMOVED Agent Mode. Default is now Middle Bookie
+  activeMode = signal<string>('အလယ်ဒိုင်'); 
+  modes = ['အလယ်ဒိုင်', 'ဒိုင်ကြီး'];
 
   // --- Settings ---
   bookieName = signal('My Shop');
-  agentProfiles = signal<string[]>(['My Shop']);
   payoutRate = signal(80);
   defaultLimit = signal(10000);
   commissionToPay = signal(0); // For direct inputs
   commissionFromUpperBookie = signal(0); // Middle bookie gets from Upper
-  agentCommissionFromBookie = signal(15); // Agent gets from Bookie
   currencySymbol = signal('K');
   currencies = ['K', '฿', '¥'];
 
@@ -85,8 +86,6 @@ export class CodeAnalyzerComponent implements OnInit {
   // Computed Map for calculations (derived from groups)
   customLimits = computed<Map<string, number>>(() => {
       const map = new Map<string, number>();
-      // Process groups in order. Later groups overwrite earlier ones if there's overlap.
-      // This allows users to set "All = 500" then "Apu = 1000".
       this.limitGroups().forEach(group => {
           group.numbers.forEach(num => {
               map.set(num, group.amount);
@@ -98,7 +97,6 @@ export class CodeAnalyzerComponent implements OnInit {
   // --- Agents & Bookies Management ---
   agents = signal<Agent[]>([]);
   upperBookies = signal<UpperBookie[]>([]);
-  agentUpperBookies = signal<UpperBookie[]>([]); // For Agent mode
 
   // --- UI Toggles ---
   showUserGuide = signal(false);
@@ -122,17 +120,17 @@ export class CodeAnalyzerComponent implements OnInit {
   imageGenerationTime = signal(''); 
   search3DTerm = signal('');
   
-  batchLimitAmount = signal<number>(0); // Added back for batch modification
+  batchLimitAmount = signal<number>(0); 
   limitManageNumber = signal('');
   limitManageAmount = signal(0);
   
   // --- Complex Logic State ---
-  profitOptimizerSuggestion = signal<any>(null); // Placeholder for profit logic
+  profitOptimizerSuggestion = signal<any>(null); 
   suggestionAppliedRecently = signal(false);
   
   // Forwarding / Holding
-  acknowledgedOverLimits = signal<Map<string, number>>(new Map()); // Number -> Amount
-  heldOverLimits = signal<Map<string, number>>(new Map()); // Number -> Amount explicitly held
+  acknowledgedOverLimits = signal<Map<string, number>>(new Map()); 
+  heldOverLimits = signal<Map<string, number>>(new Map()); 
   
   isForwardingModalOpen = signal(false);
   submissionText = signal('');
@@ -163,7 +161,6 @@ export class CodeAnalyzerComponent implements OnInit {
   newAgentCommission = signal(15);
   newUpperBookieName = signal('');
   newUpperBookieCommission = signal(10);
-  newAgentUpperBookieName = signal('');
 
   // Detail Modal State
   selectedNumberForDetail = signal('');
@@ -180,9 +177,16 @@ export class CodeAnalyzerComponent implements OnInit {
       }
     });
 
-    // Auto-save effect
+    // Auto-scroll history effect
     effect(() => {
-        // Simple auto-save trigger
+        const len = this.recentHistory().length;
+        if(len > 0 && this.historyContainer?.nativeElement) {
+            setTimeout(() => {
+                try {
+                    this.historyContainer.nativeElement.scrollTop = this.historyContainer.nativeElement.scrollHeight;
+                } catch(e) {}
+            }, 50);
+        }
     });
   }
 
@@ -196,17 +200,24 @@ export class CodeAnalyzerComponent implements OnInit {
     const totals = new Map<string, number>();
     const breakdown = new Map<string, BetDetail[]>();
 
-    hist.forEach(entry => {
-        entry.bets.forEach(b => {
-            const num = (b as any).number; 
-            if (num) {
-                totals.set(num, (totals.get(num) || 0) + b.amount);
-                const list = breakdown.get(num) || [];
-                list.push(b);
-                breakdown.set(num, list);
+    for (const entry of hist) {
+        if (entry.bets && Array.isArray(entry.bets)) {
+            for (const b of entry.bets) {
+                const num = b.number; 
+                if (num) {
+                    const currentTotal = totals.get(num) || 0;
+                    totals.set(num, currentTotal + b.amount);
+                    
+                    const list = breakdown.get(num);
+                    if(list) {
+                        list.push(b);
+                    } else {
+                        breakdown.set(num, [b]);
+                    }
+                }
             }
-        });
-    });
+        }
+    }
 
     return { totals, breakdown };
   });
@@ -214,7 +225,7 @@ export class CodeAnalyzerComponent implements OnInit {
   gridCells = computed<GridCell[]>(() => {
     const { totals, breakdown } = this.aggregatedBets();
     const defLimit = this.defaultLimit();
-    const custom = this.customLimits(); // This is now a computed map from groups
+    const custom = this.customLimits();
     const cells: GridCell[] = [];
     const is3D = this.lotteryType() === '3D';
     
@@ -240,7 +251,7 @@ export class CodeAnalyzerComponent implements OnInit {
         }
     } else {
         const allNumbers = new Set([...totals.keys(), ...custom.keys()]);
-        const sorted = Array.from(allNumbers).sort();
+        const sorted = Array.from(allNumbers).sort((a,b) => a.localeCompare(b));
         
         for (const num of sorted) {
              const amount = totals.get(num) || 0;
@@ -271,8 +282,7 @@ export class CodeAnalyzerComponent implements OnInit {
   });
 
   recentHistory = computed(() => {
-      // Return top 20 recent history entries
-      return this.history().slice(0, 20);
+      return this.history().slice(-20);
   });
 
   // --- Computed: Financials & Over Limits ---
@@ -328,16 +338,7 @@ export class CodeAnalyzerComponent implements OnInit {
       return this.totalHeldAmount() * (this.commissionFromUpperBookie() / 100);
   });
 
-  agentCommissionEarned = computed(() => {
-      return this.totalBetAmount() * (this.agentCommissionFromBookie() / 100);
-  });
-
-  agentPayableToBookie = computed(() => {
-      return this.totalBetAmount() - this.agentCommissionEarned();
-  });
-
   netAmount = computed(() => {
-      if (this.activeMode() === 'အေးဂျင့်') return this.agentCommissionEarned();
       return this.totalBetAmount() - this.payableCommissionAmount() - this.totalOverLimitAmount(); 
   });
 
@@ -346,8 +347,7 @@ export class CodeAnalyzerComponent implements OnInit {
   });
 
   pendingSubmissions = computed(() => {
-      const hist = this.history();
-      return [...hist].reverse().map(h => h.input);
+      return this.history().map(h => h.input);
   });
 
   riskAnalysis = computed(() => {
@@ -371,11 +371,27 @@ export class CodeAnalyzerComponent implements OnInit {
   });
   
   agentsWithPerformance = computed(() => {
-      return this.agents().map(a => ({
-          name: a.name,
-          commission: a.commission,
-          totalSales: 0 
-      }));
+      const hist = this.history();
+      const agentsList = this.agents();
+
+      return agentsList.map(agent => {
+          let total = 0;
+          for (const entry of hist) {
+              if (entry.bets) {
+                  for (const bet of entry.bets) {
+                      if (bet.source && agent.name && 
+                          bet.source.toLowerCase().includes(agent.name.toLowerCase())) { 
+                          total += bet.amount;
+                      }
+                  }
+              }
+          }
+          return {
+              name: agent.name,
+              commission: agent.commission,
+              totalSales: total
+          };
+      });
   });
 
   // --- Methods: Panic Mode ---
@@ -401,13 +417,15 @@ export class CodeAnalyzerComponent implements OnInit {
       if (key === 'userInput') this.userInput.set(value);
       if (key === 'commissionToPay') this.commissionToPay.set(value);
       if (key === 'commissionFromUpperBookie') this.commissionFromUpperBookie.set(value);
-      if (key === 'agentCommissionFromBookie') this.agentCommissionFromBookie.set(value);
+      
+      // Auto-save changes to settings immediately
+      this.saveToStorage();
   }
 
   setLotteryType(type: '2D' | '3D') {
       this.lotteryType.set(type);
       this.history.set([]); 
-      this.limitGroups.set([]); // Clear limits on type change
+      this.limitGroups.set([]); 
       this.acknowledgedOverLimits.set(new Map());
       this.heldOverLimits.set(new Map());
       this.saveToStorage();
@@ -417,18 +435,26 @@ export class CodeAnalyzerComponent implements OnInit {
       this.session.set(s);
   }
 
-  setActiveMode(m: string) {
+  async setActiveMode(m: string) {
+      this.saveToStorage();
       this.activeMode.set(m);
+      this.history.set([]);
+      this.limitGroups.set([]);
+      this.acknowledgedOverLimits.set(new Map());
+      this.heldOverLimits.set(new Map());
+      this.userInput.set('');
+      await this.loadState();
   }
 
   updateBookieName(name: string) {
       this.bookieName.set(name);
+      this.saveToStorage();
   }
 
   updateDefaultLimit(val: number) {
       this.defaultLimit.set(val);
-      // When default limit changes, over-limit amounts change, so we must sanitize
       this.sanitizeOverLimitMaps();
+      this.saveToStorage();
   }
 
   // --- Methods: Betting ---
@@ -464,18 +490,18 @@ export class CodeAnalyzerComponent implements OnInit {
               amount: b.amount,
               source: source,
               historyEntryId: Date.now().toString(),
-              number: b.number // Storing number explicitly for aggregation
-          } as any))
+              number: b.number 
+          }))
       };
 
-      this.history.update(h => [newEntry, ...h]);
+      this.history.update(h => [...h, newEntry]);
       this.saveToStorage();
       this.statusMessage.set('စာရင်းသွင်းပြီးပါပြီ');
       setTimeout(() => this.statusMessage.set(''), 2000);
   }
 
   undoLastBet() {
-      this.history.update(h => h.slice(1));
+      this.history.update(h => h.slice(0, -1));
       this.saveToStorage();
       this.sanitizeOverLimitMaps(); 
   }
@@ -493,7 +519,6 @@ export class CodeAnalyzerComponent implements OnInit {
   }
   
   editHistoryEntry(entry: HistoryEntry) {
-      // Implement basic edit: load into input, delete old
       this.userInput.set(entry.input);
       this.deleteHistoryEntry(entry.id);
   }
@@ -506,6 +531,10 @@ export class CodeAnalyzerComponent implements OnInit {
 
   // --- Helper: Ensure acknowledged amounts don't exceed current actual over-limit ---
   sanitizeOverLimitMaps() {
+      if (this.overLimitCells().length === 0 && this.acknowledgedOverLimits().size === 0 && this.heldOverLimits().size === 0) {
+          return;
+      }
+
       const grid = this.gridCells();
       
       this.acknowledgedOverLimits.update(map => {
@@ -514,7 +543,6 @@ export class CodeAnalyzerComponent implements OnInit {
           for (const [num, ackAmt] of newMap.entries()) {
               const cell = grid.find(c => c.number === num);
               const currentOver = cell ? cell.overLimitAmount : 0;
-              // If we acknowledged more than what is currently over limit (due to deletion), reduce it
               if (ackAmt > currentOver) {
                   if (currentOver <= 0) newMap.delete(num);
                   else newMap.set(num, currentOver);
@@ -528,7 +556,6 @@ export class CodeAnalyzerComponent implements OnInit {
           const newMap = new Map(map);
           let changed = false;
           for (const [num, heldAmt] of newMap.entries()) {
-              // 'held' is also constrained by current over limit
               const cell = grid.find(c => c.number === num);
               const currentOver = cell ? cell.overLimitAmount : 0;
               if (heldAmt > currentOver) {
@@ -562,47 +589,37 @@ export class CodeAnalyzerComponent implements OnInit {
       });
   }
 
-  // --- HELPER: Generate Voucher Text ---
+  // --- Helper: Generate Voucher Text ---
   private generateCopyText(items: {number: string, overLimitAmount: number}[]): string {
       const name = this.bookieName();
       const now = new Date();
-      // Format: dd/MM/yyyy (h:mm a)
       const date = this.datePipe.transform(now, 'dd/MM/yyyy (h:mm a)');
 
       let text = `--- ${name} ---\n`;
       text += `နေ့စွဲ - ${date}\n`;
       
       const separator = '--------------------';
-      
-      // Start with a separator
       text += `${separator}\n`;
 
       let total = 0;
-      
       items.forEach((item, index) => {
           text += `${item.number} = ${item.overLimitAmount}\n`;
           total += item.overLimitAmount;
-          
-          // Add separator every 10 items, excluding after the last item
           if ((index + 1) % 10 === 0 && (index + 1) < items.length) {
               text += `${separator}\n`;
           }
       });
 
-      // End with a separator
       text += `${separator}\n`;
       text += `စုစုပေါင်း: (${items.length}) ကွက် - ${total.toLocaleString()} ${this.currencySymbol()}`;
       return text;
   }
 
-  // UPDATED: Now copies text before acknowledging
   async acknowledgeAllForwardableOverLimits() {
       const list = this.forwardableOverLimitNumbers();
       if (list.length === 0) return;
 
-      // Use the new helper for formatted text
       const text = this.generateCopyText(list);
-      
       try {
           await navigator.clipboard.writeText(text);
           this.statusMessage.set('Forward List (စာ) Copy ကူးပြီးပါပြီ။');
@@ -614,14 +631,11 @@ export class CodeAnalyzerComponent implements OnInit {
       setTimeout(() => this.statusMessage.set(''), 2000);
   }
 
-  // UPDATED: Now copies text before clearing
   async acknowledgeAllHeldOverLimits() {
      const list = this.heldOverLimitNumbers();
      if (list.length === 0) return;
 
-     // Use the new helper for formatted text
      const text = this.generateCopyText(list);
-
      try {
          await navigator.clipboard.writeText(text);
          this.statusMessage.set('Held List (စာ) Copy ကူးပြီးပါပြီ။');
@@ -633,14 +647,11 @@ export class CodeAnalyzerComponent implements OnInit {
      setTimeout(() => this.statusMessage.set(''), 2000);
   }
 
-  // UPDATED: Now copies text before acknowledging
   async acknowledgeMainBookieOverLimits() {
       const list = this.displayedOverLimitNumbers();
       if (list.length === 0) return;
 
-      // Use the new helper for formatted text
       const text = this.generateCopyText(list);
-
       try {
           await navigator.clipboard.writeText(text);
           this.statusMessage.set('Over Limit (စာ) Copy ကူးပြီးပါပြီ။');
@@ -736,28 +747,42 @@ export class CodeAnalyzerComponent implements OnInit {
 
   // --- Methods: Persistence ---
   saveToStorage() {
+      const key = `app_state_${this.activeMode()}`;
       const data = {
           history: this.history(),
-          // Save Limit Groups instead of raw map
-          limitGroups: this.limitGroups()
+          limitGroups: this.limitGroups(),
+          bookieName: this.bookieName(),
+          payoutRate: this.payoutRate(),
+          defaultLimit: this.defaultLimit(),
+          commissionToPay: this.commissionToPay(),
+          commissionFromUpperBookie: this.commissionFromUpperBookie(),
+          currencySymbol: this.currencySymbol()
       };
-      this.persistenceService.set('app_state', data);
+      this.persistenceService.set(key, data);
   }
   
   async loadState() {
-      const data = await this.persistenceService.get<any>('app_state');
+      const key = `app_state_${this.activeMode()}`;
+      const data = await this.persistenceService.get<any>(key);
       if (data) {
           if (data.history) this.history.set(data.history);
-          // Restore limit groups
           if (data.limitGroups) {
               this.limitGroups.set(data.limitGroups);
-          } else if (data.customLimits) {
-              // Backward compatibility: If old map exists but no groups, ignore or try to migrate?
-              // For now, let's start fresh with groups to avoid confusion, or map each key to a group of 1
-              // Ideally, we just clear it or let user re-enter. 
-              // To keep it simple based on request "Fix it", we prioritize the new system.
+          } else {
               this.limitGroups.set([]);
           }
+          
+          if (data.bookieName) this.bookieName.set(data.bookieName);
+          if (data.payoutRate !== undefined) this.payoutRate.set(data.payoutRate);
+          if (data.defaultLimit !== undefined) this.defaultLimit.set(data.defaultLimit);
+          if (data.commissionToPay !== undefined) this.commissionToPay.set(data.commissionToPay);
+          if (data.commissionFromUpperBookie !== undefined) this.commissionFromUpperBookie.set(data.commissionFromUpperBookie);
+          if (data.currencySymbol) this.currencySymbol.set(data.currencySymbol);
+
+      } else {
+          this.history.set([]);
+          this.limitGroups.set([]);
+          this.bookieName.set('My Shop');
       }
       
       const agents = await this.persistenceService.get<Agent[]>('lottery_agents');
@@ -820,14 +845,11 @@ export class CodeAnalyzerComponent implements OnInit {
   }
   closeLimitModal() { this.showLimitManagementModal.set(false); }
   
-  // Create Limit Group
   saveIndividualLimit() {
       const name = this.limitManageNumber();
       const amt = this.limitManageAmount();
       
       if (name) {
-          // Use parser to get all numbers associated with this name (e.g. apu -> 00, 11...)
-          // We use dummy amount '1' just to get the keys
           const dummyInput = `${name} 1`; 
           const results = this.betParsingService.parseRaw(dummyInput, this.lotteryType());
           
@@ -893,27 +915,11 @@ export class CodeAnalyzerComponent implements OnInit {
       this.sanitizeOverLimitMaps();
   }
 
-  // --- Agent Profile ---
-  addAgentProfile() {
-      const name = this.bookieName();
-      if (!this.agentProfiles().includes(name)) {
-          this.agentProfiles.update(p => [...p, name]);
-      }
-  }
-  removeAgentProfile() {
-      const name = this.bookieName();
-      this.agentProfiles.update(p => p.filter(n => n !== name));
-      if(this.agentProfiles().length > 0) this.bookieName.set(this.agentProfiles()[0]);
-  }
-  onProfileSelect(e: any) {
-      this.bookieName.set(e.target.value);
-  }
-
   // --- Inbox / Chat Import ---
   handleChatImport(data: {text: string, agentName: string}) {
       this.showChat.set(false);
       this.inboxInput.set(data.text);
-      this.selectedAgentForInbox.set(data.agentName); // Auto select if possible
+      this.selectedAgentForInbox.set(data.agentName); 
       this.addBetsFromInbox();
   }
 
@@ -933,22 +939,17 @@ export class CodeAnalyzerComponent implements OnInit {
   updateInboxInput(val: string) {
       this.inboxInput.set(val);
       
-      // Attempt to find Agent Name in headers like "--- Name ---"
       const lines = val.split('\n');
       for (const line of lines) {
           const trimmed = line.trim();
-          // Regex to capture text between dashed lines: --- AgentName ---
           const match = trimmed.match(/^[-=_]{3,}\s*(.+?)\s*[-=_]{3,}$/);
           if (match) {
               const detectedName = match[1].trim();
               if (detectedName) {
-                  // Check if exists
                   const existing = this.agents().find(a => a.name.toLowerCase() === detectedName.toLowerCase());
                   if (existing) {
                       this.selectedAgentForInbox.set(existing.name);
                   } else {
-                      // Agent doesn't exist. Add it dynamically to allow processing
-                      // User expects auto-listing, so we create the agent to facilitate this.
                       const newAgent = { name: detectedName, commission: 15 };
                       this.agents.update(a => [...a, newAgent]);
                       this.persistenceService.set('lottery_agents', this.agents());
@@ -958,7 +959,7 @@ export class CodeAnalyzerComponent implements OnInit {
                       setTimeout(() => this.statusMessage.set(''), 2000);
                   }
               }
-              break; // Found header, stop looking
+              break; 
           }
       }
   }
@@ -993,20 +994,147 @@ export class CodeAnalyzerComponent implements OnInit {
       const grid = this.gridCells();
       const winCell = grid.find(c => c.number === win);
       
-      const cellAmount = winCell ? winCell.amount : 0;
-      const cellOverLimit = winCell ? winCell.overLimitAmount : 0;
-      const totalHeldWin = cellAmount - cellOverLimit;
-      
+      // Global totals from Grid
+      const cellAmount = winCell ? winCell.amount : 0; 
+      const limit = this.customLimits().get(win) ?? this.defaultLimit();
+      const payoutRate = this.payoutRate();
+      const agents = this.agents();
+      const hist = this.history(); // Chronological order is guaranteed by array push
+
+      // Tracking stats per source
+      const stats = new Map<string, {
+          isAgent: boolean,
+          commissionRate: number,
+          totalSales: number,
+          winBetTotal: number, // Total bet on winning number by this source
+          winBetHeld: number,  // Portion of bet within limit
+          winBetOver: number,  // Portion of bet over limit
+          betsOnWin: string[] // List of "amount" strings for display
+      }>();
+
+      // Helper to get or init stats object
+      const getStats = (sourceName: string, isAgent: boolean, comm: number) => {
+          if (!stats.has(sourceName)) {
+              stats.set(sourceName, {
+                  isAgent,
+                  commissionRate: comm,
+                  totalSales: 0,
+                  winBetTotal: 0,
+                  winBetHeld: 0,
+                  winBetOver: 0,
+                  betsOnWin: []
+              });
+          }
+          return stats.get(sourceName)!;
+      };
+
+      let runningWinTotal = 0;
+
+      // 1. Process History Chronologically to determine Hold vs Over-Limit logic (FIFO)
+      for (const entry of hist) {
+          if (entry.bets) {
+              for (const bet of entry.bets) {
+                  // Determine Source & Commission
+                  let sourceName = bet.source;
+                  let isAgent = false;
+                  let comm = this.commissionToPay(); // Default for direct inputs
+
+                  // Clean source string to match agent names
+                  const cleanSource = sourceName.replace('Inbox: ', '').trim();
+                  
+                  const agent = agents.find(a => a.name.toLowerCase() === cleanSource.toLowerCase());
+                  if (agent) {
+                      sourceName = agent.name; 
+                      isAgent = true;
+                      comm = agent.commission;
+                  } else {
+                      // Normalize 'Inbox: Name' to just 'Name' if not in agent list, or keep as is?
+                      // Keeping distinct allows ad-hoc sources.
+                      if (sourceName.startsWith('Inbox: ')) {
+                          sourceName = sourceName.replace('Inbox: ', '');
+                      }
+                  }
+
+                  const stat = getStats(sourceName, isAgent, comm);
+                  
+                  // Accumulate Sales
+                  stat.totalSales += bet.amount;
+
+                  // Check if this bet is on the winning number
+                  if (bet.number === win) {
+                      stat.winBetTotal += bet.amount;
+                      stat.betsOnWin.push(bet.amount.toLocaleString());
+
+                      // Calculate Held vs Over (FIFO logic based on running total)
+                      const spaceRemaining = Math.max(0, limit - runningWinTotal);
+                      const heldPortion = Math.min(bet.amount, spaceRemaining);
+                      const overPortion = bet.amount - heldPortion;
+
+                      stat.winBetHeld += heldPortion;
+                      stat.winBetOver += overPortion;
+
+                      runningWinTotal += bet.amount;
+                  }
+              }
+          }
+      }
+
+      // 2. Transform stats into Payout Objects for the UI
+      const agentPayouts: any[] = [];
+      const otherPayouts: any[] = [];
+
+      stats.forEach((s, name) => {
+          const commissionAmount = s.totalSales * (s.commissionRate / 100);
+          const netSales = s.totalSales - commissionAmount;
+          
+          const totalWinAmount = s.winBetTotal * payoutRate; // Theoretical win if no limit
+          const overLimitWinAmount = s.winBetOver * payoutRate; // Win amount that was cut
+          const heldWinAmount = s.winBetHeld * payoutRate; // Actual Payout to be made
+          
+          const finalBalance = netSales - heldWinAmount; // Positive = Receive from Agent, Negative = Pay to Agent
+
+          const dto = {
+              name: name,
+              totalSales: s.totalSales,
+              commissionAmount: commissionAmount,
+              netSales: netSales,
+              individualBets: s.betsOnWin,
+              
+              totalWinBetAmount: s.winBetTotal,
+              totalWinAmount: totalWinAmount,
+              
+              overLimitWinBetAmount: s.winBetOver,
+              overLimitWinAmount: overLimitWinAmount,
+              
+              heldWinBetAmount: s.winBetHeld,
+              payout: heldWinAmount,
+              
+              finalBalance: finalBalance
+          };
+
+          if (s.isAgent) {
+              agentPayouts.push(dto);
+          } else {
+              otherPayouts.push(dto);
+          }
+      });
+
+      // Calculate totals for the summary header based on actual grid limits
+      const winCellAmount = winCell ? winCell.amount : 0;
+      const winCellOver = Math.max(0, winCellAmount - limit);
+      const totalHeldWin = winCellAmount - winCellOver; 
+
       this.payoutDetails.set({
           winningNumber: win,
           totalBet: this.totalBetAmount(),
           totalOverLimitBet: this.totalOverLimitAmount(),
           totalHeldBet: this.totalHeldAmount(),
-          totalHeldPayout: totalHeldWin * this.payoutRate(),
-          agentPayouts: [], 
-          otherPayouts: []
+          totalHeldPayout: totalHeldWin * payoutRate,
+          agentPayouts: agentPayouts.sort((a,b) => b.totalSales - a.totalSales), 
+          otherPayouts: otherPayouts.sort((a,b) => b.totalSales - a.totalSales)
       });
   }
+  
   printPayout() { window.print(); }
 
   // --- Detail Modal ---
@@ -1019,7 +1147,10 @@ export class CodeAnalyzerComponent implements OnInit {
   closeBetDetailModal() { this.showBetDetailModal.set(false); }
   editBetFromDetail(bet: BetDetail) {
       this.deleteBetFromDetail(bet);
-      this.userInput.set(`${(bet as any).number} ${bet.amount}`);
+      const num = bet.number || (bet as any).number;
+      if (num) {
+        this.userInput.set(`${num} ${bet.amount}`);
+      }
       this.showBetDetailModal.set(false);
   }
   deleteBetFromDetail(bet: BetDetail) {
@@ -1085,7 +1216,7 @@ export class CodeAnalyzerComponent implements OnInit {
       }
   }
 
-  // --- Agents Management (Basic Impl) ---
+  // --- Agents Management ---
   addAgent() {
       if(this.newAgentName()) {
           this.agents.update(a => [...a, { name: this.newAgentName(), commission: this.newAgentCommission() }]);
@@ -1108,39 +1239,31 @@ export class CodeAnalyzerComponent implements OnInit {
       this.upperBookies.update(u => u.filter(x => x.name !== name));
       this.persistenceService.set('lottery_upper_bookies', this.upperBookies());
   }
-  addAgentUpperBookie() {
-      if(this.newAgentUpperBookieName()) {
-          this.agentUpperBookies.update(u => [...u, { name: this.newAgentUpperBookieName(), commission: 0 }]);
-          this.newAgentUpperBookieName.set('');
-      }
-  }
-  removeAgentUpperBookie(name: string) {
-      this.agentUpperBookies.update(u => u.filter(x => x.name !== name));
-  }
 
   // --- Reports ---
   saveReport() {
-      const report: Report = {
+      const report: AppReport = {
           id: `report_${Date.now()}`,
           lotteryType: this.lotteryType(),
           date: new Date().toISOString(),
+          session: this.session(), 
           mode: this.activeMode(),
           totalBetAmount: this.totalBetAmount(),
           totalOverLimitAmount: this.totalOverLimitAmount(),
           totalHeldAmount: this.totalHeldAmount(),
           payableCommissionAmount: this.payableCommissionAmount(),
           receivableCommissionAmount: this.receivableCommissionAmount(),
-          agentCommissionEarned: this.agentCommissionEarned(),
+          agentCommissionEarned: 0, // No longer applicable
           netAmount: this.netAmount(),
           lotteryData: this.gridCells().filter(c => c.amount > 0).map(c => [c.number, c.amount] as [string, number]),
-          betHistory: this.history().map((h: HistoryEntry) => h.input),
+          betHistory: this.history().map((h: HistoryEntry) => String(h.input)) as string[],
           bookieName: this.bookieName(),
           defaultLimit: this.defaultLimit(),
           payoutRate: this.payoutRate(),
           commissionToPay: this.commissionToPay(),
-          agentCommissionFromBookie: this.agentCommissionFromBookie(),
+          agentCommissionFromBookie: 0,
           commissionFromUpperBookie: this.commissionFromUpperBookie(),
-          individualLimits: [],
+          individualLimits: [] as [string, number][],
           upperBookies: this.upperBookies(),
           agents: this.agents(),
           currencySymbol: this.currencySymbol()
@@ -1151,12 +1274,16 @@ export class CodeAnalyzerComponent implements OnInit {
       setTimeout(() => this.statusMessage.set(''), 2000);
   }
   
-  handleReportRestore(r: Report) {
+  handleReportRestore(r: AppReport) {
       this.history.set([]); 
-      if (r.betHistory) {
-          r.betHistory.forEach(input => {
-             const bets = this.betParsingService.parseRaw(input, r.lotteryType);
-             this.processNewBets(bets, 'Restored', input);
+      // Ensure r.betHistory is treated as array and cast properly to avoid type errors
+      if (r.betHistory && Array.isArray(r.betHistory)) {
+          (r.betHistory as any[]).forEach((input: any) => {
+             // Safe check to ensure we only process strings
+             if (typeof input === 'string') {
+                 const bets = this.betParsingService.parseRaw(input, r.lotteryType);
+                 this.processNewBets(bets, 'Restored', input);
+             }
           });
       }
       this.showReports.set(false);
