@@ -224,7 +224,7 @@
               
               <div class="flex items-center gap-2">
                   <label class="whitespace-nowrap w-28">ငွေကြေး:</label>
-                  <select [ngModel]="currencySymbol()" (ngModelChange)="currencySymbol.set($event)" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 focus:ring-yellow-500">
+                  <select [ngModel]="currencySymbol()" (ngModelChange)="updateCurrentState('currencySymbol', $event)" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 focus:ring-yellow-500">
                       @for(c of currencies; track c) { <option [value]="c">{{ c }}</option> }
                   </select>
               </div>

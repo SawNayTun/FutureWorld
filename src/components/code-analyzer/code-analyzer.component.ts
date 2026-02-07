@@ -192,6 +192,11 @@ export class CodeAnalyzerComponent implements OnInit {
   }
 
   async ngOnInit() {
+      // Restore last active mode if exists to prevent resetting settings on reload
+      const lastMode = await this.persistenceService.get<string>('last_active_mode');
+      if (lastMode && this.modes.includes(lastMode)) {
+          this.activeMode.set(lastMode);
+      }
       await this.loadState();
   }
 
@@ -476,6 +481,7 @@ export class CodeAnalyzerComponent implements OnInit {
       if (key === 'userInput') this.userInput.set(value);
       if (key === 'commissionToPay') this.commissionToPay.set(value);
       if (key === 'commissionFromUpperBookie') this.commissionFromUpperBookie.set(value);
+      if (key === 'currencySymbol') this.currencySymbol.set(value); 
       
       // Auto-save changes to settings immediately
       this.saveToStorage();
@@ -497,6 +503,7 @@ export class CodeAnalyzerComponent implements OnInit {
   async setActiveMode(m: string) {
       this.saveToStorage();
       this.activeMode.set(m);
+      this.persistenceService.set('last_active_mode', m); 
       this.history.set([]);
       this.limitGroups.set([]);
       this.acknowledgedOverLimits.set(new Map());
@@ -898,8 +905,21 @@ export class CodeAnalyzerComponent implements OnInit {
   }
   
   openLimitModal(num?: string) { 
-      if(num) this.limitManageNumber.set(num);
-      else this.limitManageNumber.set('');
+      if(num) {
+          this.limitManageNumber.set(num);
+          // Check if this number has a specific limit in the computed map
+          const existingLimit = this.customLimits().get(num);
+          if (existingLimit !== undefined) {
+              this.limitManageAmount.set(existingLimit);
+          } else {
+              // If no custom limit, show the default limit
+              this.limitManageAmount.set(this.defaultLimit());
+          }
+      } else {
+          // New/General entry
+          this.limitManageNumber.set('');
+          this.limitManageAmount.set(this.defaultLimit());
+      }
       this.showLimitManagementModal.set(true); 
   }
   closeLimitModal() { this.showLimitManagementModal.set(false); }
@@ -1315,14 +1335,14 @@ export class CodeAnalyzerComponent implements OnInit {
           agentCommissionEarned: 0, // No longer applicable
           netAmount: this.netAmount(),
           lotteryData: this.gridCells().filter(c => c.amount > 0).map(c => [c.number, c.amount] as [string, number]),
-          betHistory: this.history().map(h => h.input),
+          betHistory: this.history().map(h => h.input) as string[],
           bookieName: this.bookieName(),
           defaultLimit: this.defaultLimit(),
           payoutRate: this.payoutRate(),
           commissionToPay: this.commissionToPay(),
           agentCommissionFromBookie: 0,
           commissionFromUpperBookie: this.commissionFromUpperBookie(),
-          individualLimits: [],
+          individualLimits: [] as [string, number][],
           upperBookies: this.upperBookies(),
           agents: this.agents(),
           currencySymbol: this.currencySymbol()
@@ -1337,7 +1357,7 @@ export class CodeAnalyzerComponent implements OnInit {
       this.history.set([]); 
       // Ensure r.betHistory is treated as array and cast properly to avoid type errors
       if (r.betHistory && Array.isArray(r.betHistory)) {
-          r.betHistory.forEach((input) => {
+          (r.betHistory as any[]).forEach((input: any) => {
              // Safe check to ensure we only process strings
              if (typeof input === 'string') {
                  const bets = this.betParsingService.parseRaw(input, r.lotteryType);
