@@ -1,4 +1,3 @@
-
 import { Component, ChangeDetectionStrategy, signal, computed, inject, effect, ElementRef, ViewChild, OnInit } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -131,6 +130,7 @@ export class CodeAnalyzerComponent implements OnInit {
   // Forwarding / Holding
   acknowledgedOverLimits = signal<Map<string, number>>(new Map()); 
   heldOverLimits = signal<Map<string, number>>(new Map()); 
+  heldNumberStatus = signal<Set<string>>(new Set()); // Tracks numbers designated as "held"
   
   isForwardingModalOpen = signal(false);
   submissionText = signal('');
@@ -189,6 +189,38 @@ export class CodeAnalyzerComponent implements OnInit {
             }, 50);
         }
     });
+
+    // Effect to auto-move new over-limits for "sticky held" numbers to the held list
+    effect(() => {
+        const grid = this.gridCells();
+        const heldStatus = this.heldNumberStatus();
+        if (heldStatus.size === 0) return;
+
+        const ackMap = this.acknowledgedOverLimits();
+        const heldMap = this.heldOverLimits();
+
+        let needsUpdate = false;
+        const newHeldAmounts = new Map(heldMap);
+
+        for (const number of heldStatus) {
+            const cell = grid.find(c => c.number === number);
+            if (cell && cell.isOverLimit) {
+                const ack = ackMap.get(number) || 0;
+                const held = newHeldAmounts.get(number) || 0;
+                
+                const forwardableAmount = cell.overLimitAmount - (ack + held);
+
+                if (forwardableAmount > 0) {
+                    newHeldAmounts.set(number, held + forwardableAmount);
+                    needsUpdate = true;
+                }
+            }
+        }
+
+        if (needsUpdate) {
+            this.heldOverLimits.set(newHeldAmounts);
+        }
+    }, { allowSignalWrites: true });
   }
 
   async ngOnInit() {
@@ -321,6 +353,10 @@ export class CodeAnalyzerComponent implements OnInit {
       return list;
   });
 
+  totalHeldVoucherAmount = computed(() => {
+    return this.heldOverLimitNumbers().reduce((sum, item) => sum + item.overLimitAmount, 0);
+  });
+
   displayedOverLimitNumbers = computed(() => {
       const acknowledged = this.acknowledgedOverLimits();
       return this.overLimitCells().map(cell => {
@@ -332,8 +368,9 @@ export class CodeAnalyzerComponent implements OnInit {
 
   totalHeldAmount = computed<number>(() => {
       const baseHeld = this.totalBetAmount() - this.totalOverLimitAmount();
-      const heldValues = Array.from<number>(this.heldOverLimits().values());
-      const explicitHeld = heldValues.reduce((a, b) => a + b, 0);
+      const heldValues = Array.from(this.heldOverLimits().values());
+      // FIX: Use Number() to safely handle potentially non-numeric values from the signal.
+      const explicitHeld = heldValues.reduce((a, b) => a + Number(b), 0);
       return baseHeld + explicitHeld;
   });
 
@@ -493,6 +530,7 @@ export class CodeAnalyzerComponent implements OnInit {
       this.limitGroups.set([]); 
       this.acknowledgedOverLimits.set(new Map());
       this.heldOverLimits.set(new Map());
+      this.heldNumberStatus.set(new Set());
       this.saveToStorage();
   }
 
@@ -508,6 +546,7 @@ export class CodeAnalyzerComponent implements OnInit {
       this.limitGroups.set([]);
       this.acknowledgedOverLimits.set(new Map());
       this.heldOverLimits.set(new Map());
+      this.heldNumberStatus.set(new Set());
       this.userInput.set('');
       await this.loadState();
   }
@@ -580,6 +619,7 @@ export class CodeAnalyzerComponent implements OnInit {
       this.history.set([]);
       this.acknowledgedOverLimits.set(new Map());
       this.heldOverLimits.set(new Map());
+      this.heldNumberStatus.set(new Set());
       this.saveToStorage();
       this.showClearAllConfirmation.set(false);
   }
@@ -644,6 +684,11 @@ export class CodeAnalyzerComponent implements OnInit {
               newMap.set(number, current + item.overLimitAmount);
               return newMap;
           });
+          this.heldNumberStatus.update(set => {
+              const newSet = new Set(set);
+              newSet.add(number);
+              return newSet;
+          });
       }
   }
 
@@ -652,6 +697,11 @@ export class CodeAnalyzerComponent implements OnInit {
           const newMap = new Map(map);
           newMap.delete(number);
           return newMap;
+      });
+      this.heldNumberStatus.update(set => {
+          const newSet = new Set(set);
+          newSet.delete(number);
+          return newSet;
       });
   }
 
@@ -705,7 +755,25 @@ export class CodeAnalyzerComponent implements OnInit {
      try {
          await navigator.clipboard.writeText(text);
          this.statusMessage.set('Held List (စာ) Copy ကူးပြီးပါပြီ။');
-         this.heldOverLimits.set(new Map());
+
+         // After copying, move from held to acknowledged.
+         this.acknowledgedOverLimits.update(ackMap => {
+            const newAckMap = new Map(ackMap);
+            list.forEach(item => {
+                const currentAck = newAckMap.get(item.number) || 0;
+                newAckMap.set(item.number, currentAck + item.overLimitAmount);
+            });
+            return newAckMap;
+         });
+
+         this.heldOverLimits.update(heldMap => {
+            const newHeldMap = new Map(heldMap);
+            list.forEach(item => {
+                newHeldMap.delete(item.number);
+            });
+            return newHeldMap;
+         });
+
      } catch (err) {
          console.error(err);
          this.statusMessage.set('Copy Error: HTTPS required');
@@ -811,6 +879,82 @@ export class CodeAnalyzerComponent implements OnInit {
       }, 10);
   }
 
+  async copyHeldListAsImage() {
+      if (typeof html2canvas === 'undefined') {
+          alert('Error: Image generation library not loaded.');
+          return;
+      }
+      const list = this.heldOverLimitNumbers();
+      if (list.length === 0) {
+          this.statusMessage.set('ထုတ်ရန် စာရင်းမရှိပါ။');
+          setTimeout(() => this.statusMessage.set(''), 2000);
+          return;
+      }
+
+      this.isGeneratingImage.set(true);
+      this.imageGenerationTime.set(this.datePipe.transform(new Date(), 'dd/MM/yyyy, h:mm:ss a') || '');
+      
+      setTimeout(async () => {
+          const element = document.getElementById('held-voucher-capture');
+          if (!element) {
+              this.isGeneratingImage.set(false);
+              return;
+          }
+
+          try {
+              const canvas = await html2canvas(element, {
+                  scale: 1.5,
+                  backgroundColor: '#ffffff', 
+                  logging: false,
+                  useCORS: true
+              });
+
+              canvas.toBlob(async (blob: Blob | null) => {
+                  if(!blob) {
+                      this.statusMessage.set('Image generation failed.');
+                      this.isGeneratingImage.set(false);
+                      return;
+                  }
+                  try {
+                      await navigator.clipboard.write([
+                          new ClipboardItem({ 'image/png': blob })
+                      ]);
+                      this.statusMessage.set('Held Img Copy ကူးပြီးပါပြီ! Messenger တွင် Paste (Ctrl+V) ချနိုင်ပါပြီ။');
+                      
+                      // After copying, move from held to acknowledged.
+                      this.acknowledgedOverLimits.update(ackMap => {
+                         const newAckMap = new Map(ackMap);
+                         list.forEach(item => {
+                             const currentAck = newAckMap.get(item.number) || 0;
+                             newAckMap.set(item.number, currentAck + item.overLimitAmount);
+                         });
+                         return newAckMap;
+                      });
+
+                      this.heldOverLimits.update(heldMap => {
+                         const newHeldMap = new Map(heldMap);
+                         list.forEach(item => {
+                             newHeldMap.delete(item.number);
+                         });
+                         return newHeldMap;
+                      });
+                      
+                  } catch (err) {
+                      console.error(err);
+                      this.statusMessage.set('Clipboard Error: HTTPS required.');
+                  }
+                  
+                  setTimeout(() => this.statusMessage.set(''), 4000);
+                  this.isGeneratingImage.set(false);
+              }, 'image/png');
+          } catch (e) {
+              console.error(e);
+              this.isGeneratingImage.set(false);
+              this.statusMessage.set('Error generating image.');
+          }
+      }, 10);
+  }
+
   // --- Methods: Persistence ---
   saveToStorage() {
       const key = `app_state_${this.activeMode()}`;
@@ -822,7 +966,8 @@ export class CodeAnalyzerComponent implements OnInit {
           defaultLimit: this.defaultLimit(),
           commissionToPay: this.commissionToPay(),
           commissionFromUpperBookie: this.commissionFromUpperBookie(),
-          currencySymbol: this.currencySymbol()
+          currencySymbol: this.currencySymbol(),
+          heldNumberStatus: Array.from(this.heldNumberStatus())
       };
       this.persistenceService.set(key, data);
   }
@@ -844,6 +989,11 @@ export class CodeAnalyzerComponent implements OnInit {
           if (data.commissionToPay !== undefined) this.commissionToPay.set(data.commissionToPay);
           if (data.commissionFromUpperBookie !== undefined) this.commissionFromUpperBookie.set(data.commissionFromUpperBookie);
           if (data.currencySymbol) this.currencySymbol.set(data.currencySymbol);
+          if (data.heldNumberStatus && Array.isArray(data.heldNumberStatus)) {
+              this.heldNumberStatus.set(new Set(data.heldNumberStatus));
+          } else {
+              this.heldNumberStatus.set(new Set());
+          }
 
       } else {
           this.history.set([]);
@@ -1335,7 +1485,7 @@ export class CodeAnalyzerComponent implements OnInit {
           agentCommissionEarned: 0, // No longer applicable
           netAmount: this.netAmount(),
           lotteryData: this.gridCells().filter(c => c.amount > 0).map(c => [c.number, c.amount] as [string, number]),
-          betHistory: this.history().map(h => h.input) as string[],
+          betHistory: this.history().map(h => h.input),
           bookieName: this.bookieName(),
           defaultLimit: this.defaultLimit(),
           payoutRate: this.payoutRate(),
@@ -1354,18 +1504,20 @@ export class CodeAnalyzerComponent implements OnInit {
   }
   
   handleReportRestore(r: AppReport) {
-      this.history.set([]); 
-      // Ensure r.betHistory is treated as array and cast properly to avoid type errors
-      if (r.betHistory && Array.isArray(r.betHistory)) {
-          (r.betHistory as any[]).forEach((input: any) => {
-             // Safe check to ensure we only process strings
-             if (typeof input === 'string') {
-                 const bets = this.betParsingService.parseRaw(input, r.lotteryType);
-                 this.processNewBets(bets, 'Restored', input);
-             }
-          });
-      }
-      this.showReports.set(false);
+    this.history.set([]);
+    // FIX: The property r.betHistory comes from persisted data and may not strictly be a string[].
+    // To handle this safely, we cast to unknown[], filter for strings, and then process.
+    if (r.betHistory && Array.isArray(r.betHistory)) {
+      // FIX: The original type guard might not be correctly inferred by the compiler version.
+      // Using filter with a type guard is more robust and correctly infers the type.
+      const safeHistory = (r.betHistory as unknown[]).filter((input): input is string => typeof input === 'string');
+      
+      safeHistory.forEach((input: string) => {
+        const bets = this.betParsingService.parseRaw(input, r.lotteryType);
+        this.processNewBets(bets, 'Restored', input);
+      });
+    }
+    this.showReports.set(false);
   }
 
   // --- Forwarding Modal ---
