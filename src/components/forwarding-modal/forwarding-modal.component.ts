@@ -35,6 +35,10 @@ export class ForwardingModalComponent implements OnInit {
   dragOverBookie = signal<string | null>(null);
   copiedMessage = signal('');
   captureTime = signal('');
+  
+  // Image Preview Modal State
+  showImagePreview = signal(false);
+  previewImageUrl = signal('');
 
   bookieKeys = computed(() => Object.keys(this.assignments()));
 
@@ -219,6 +223,14 @@ export class ForwardingModalComponent implements OnInit {
     this.copyToClipboard(textToCopy);
   }
 
+  closeImagePreview() {
+      if (this.previewImageUrl()) {
+          URL.revokeObjectURL(this.previewImageUrl());
+      }
+      this.previewImageUrl.set('');
+      this.showImagePreview.set(false);
+  }
+
   async copyAsImage(bookieName: string, index: number) {
       if (typeof html2canvas === 'undefined') {
           alert('Error: Image generation library not loaded.');
@@ -252,7 +264,7 @@ export class ForwardingModalComponent implements OnInit {
                     return;
                 }
 
-                // 3. Write to Clipboard
+                // 3. Try Copy or Fallback to Download
                 try {
                     // This requires Secure Context (HTTPS or Localhost)
                     await navigator.clipboard.write([
@@ -260,8 +272,14 @@ export class ForwardingModalComponent implements OnInit {
                     ]);
                     this.copiedMessage.set('ပုံ Copy ကူးပြီးပါပြီ! Messenger တွင် Paste (Ctrl+V) ချနိုင်ပါပြီ။');
                 } catch (err) {
-                    console.error('Clipboard write failed', err);
-                    this.copiedMessage.set('Clipboard Error: HTTPS လိုအပ်ပါသည်။');
+                    console.warn('Clipboard write failed, falling back to download', err);
+                    
+                    // Fallback: Show Image Preview Modal
+                    const url = URL.createObjectURL(blob);
+                    this.previewImageUrl.set(url);
+                    this.showImagePreview.set(true);
+                    
+                    this.copiedMessage.set('အလိုအလျောက် Copy မရပါ။ ပုံကို ဖိနှိပ်ပြီး Copy ယူပေးပါ။');
                 }
                 
                 setTimeout(() => this.copiedMessage.set(''), 4000);

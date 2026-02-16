@@ -5,6 +5,7 @@ import { BetParsingService, RawBet } from '../../services/bet-parsing.service';
 import { LicenseService } from '../../services/license.service';
 import { VoiceRecognitionService } from '../../services/voice-recognition.service';
 import { PersistenceService } from '../../services/persistence.service';
+import { QrService, QrBetData } from '../../services/qr.service';
 import { 
   GridCell, BetDetail, VoucherSettings, Report as AppReport, Agent, UpperBookie, LimitGroup 
 } from '../../models/app.models';
@@ -48,6 +49,7 @@ export class CodeAnalyzerComponent implements OnInit {
   licenseService = inject(LicenseService);
   voiceService = inject(VoiceRecognitionService);
   persistenceService = inject(PersistenceService);
+  qrService = inject(QrService);
   private datePipe = inject(DatePipe);
 
   @ViewChild('mainBetInput') mainBetInput!: ElementRef<HTMLTextAreaElement>;
@@ -119,6 +121,10 @@ export class CodeAnalyzerComponent implements OnInit {
   imageGenerationTime = signal(''); 
   search3DTerm = signal('');
   
+  // Image Preview Modal State
+  showImagePreview = signal(false);
+  previewImageUrl = signal('');
+  
   batchLimitAmount = signal<number>(0); 
   limitManageNumber = signal('');
   limitManageAmount = signal(0);
@@ -155,6 +161,7 @@ export class CodeAnalyzerComponent implements OnInit {
     fontSize: 'small',
     showDateTime: true
   });
+  voucherQrCodeUrl = signal(''); // To hold QR for hidden voucher
 
   // Management Inputs
   newAgentName = signal('');
@@ -206,7 +213,8 @@ export class CodeAnalyzerComponent implements OnInit {
             const cell = grid.find(c => c.number === number);
             if (cell && cell.isOverLimit) {
                 const ack = ackMap.get(number) || 0;
-                const held = newHeldAmounts.get(number) || 0;
+                // FIX: Cast `held` to a number. Values from maps of persisted data can be inferred as `unknown`.
+                const held = Number(newHeldAmounts.get(number) || 0);
                 
                 const forwardableAmount = cell.overLimitAmount - (ack + held);
 
@@ -369,8 +377,8 @@ export class CodeAnalyzerComponent implements OnInit {
   totalHeldAmount = computed<number>(() => {
       const baseHeld = this.totalBetAmount() - this.totalOverLimitAmount();
       const heldValues = Array.from(this.heldOverLimits().values());
-      // FIX: Use Number() to safely handle potentially non-numeric values from the signal.
-      const explicitHeld = heldValues.reduce((a, b) => a + Number(b), 0);
+      // FIX(2024-07-29): The value `b` could be of an unknown type. Safely cast to a number before summation.
+      const explicitHeld = heldValues.reduce((a: number, b) => a + Number(b || 0), 0);
       return baseHeld + explicitHeld;
   });
 
@@ -515,7 +523,6 @@ export class CodeAnalyzerComponent implements OnInit {
   updateCurrentState(key: string, value: any) {
       if (key === 'drawDate') this.drawDate.set(value);
       if (key === 'payoutRate') this.payoutRate.set(value);
-      if (key === 'userInput') this.userInput.set(value);
       if (key === 'commissionToPay') this.commissionToPay.set(value);
       if (key === 'commissionFromUpperBookie') this.commissionFromUpperBookie.set(value);
       if (key === 'currencySymbol') this.currencySymbol.set(value); 
@@ -812,6 +819,31 @@ export class CodeAnalyzerComponent implements OnInit {
   }
 
   // --- Methods: Image Generation ---
+  private async prepareVoucherWithQr(
+      list: { number: string, overLimitAmount: number }[]
+  ): Promise<void> {
+      // Increased safety limit to 400 because of new compression
+      if (list.length === 0 || list.length > 400) {
+          this.voucherQrCodeUrl.set('');
+          return;
+      }
+      const data: QrBetData = {
+          v: 1,
+          d: list.map(item => [item.number, item.overLimitAmount]),
+          a: this.bookieName()
+      };
+      const qrUrl = await this.qrService.generateQrCode(data);
+      this.voucherQrCodeUrl.set(qrUrl);
+  }
+
+  closeImagePreview() {
+      if (this.previewImageUrl()) {
+          URL.revokeObjectURL(this.previewImageUrl());
+      }
+      this.previewImageUrl.set('');
+      this.showImagePreview.set(false);
+  }
+
   async copyForwardableListAsImage() {
       if (typeof html2canvas === 'undefined') {
           alert('Error: Image generation library not loaded.');
@@ -826,6 +858,8 @@ export class CodeAnalyzerComponent implements OnInit {
       this.isGeneratingImage.set(true);
       this.imageGenerationTime.set(this.datePipe.transform(new Date(), 'dd/MM/yyyy, h:mm:ss a') || '');
       
+      await this.prepareVoucherWithQr(list.map(i => ({number: i.number, overLimitAmount: i.overLimitAmount})));
+      
       setTimeout(async () => {
           const element = document.getElementById('forward-voucher-capture');
           if (!element) {
@@ -835,7 +869,7 @@ export class CodeAnalyzerComponent implements OnInit {
 
           try {
               const canvas = await html2canvas(element, {
-                  scale: 1.5,
+                  scale: 3, // Increased scale for clearer QR
                   backgroundColor: '#ffffff', 
                   logging: false,
                   useCORS: true
@@ -847,12 +881,9 @@ export class CodeAnalyzerComponent implements OnInit {
                       this.isGeneratingImage.set(false);
                       return;
                   }
-                  try {
-                      await navigator.clipboard.write([
-                          new ClipboardItem({ 'image/png': blob })
-                      ]);
-                      this.statusMessage.set('Img Copy ကူးပြီးပါပြီ! Messenger တွင် Paste (Ctrl+V) ချနိုင်ပါပြီ။');
 
+                  const handleSuccess = (msg: string) => {
+                      this.statusMessage.set(msg);
                       const fullOverLimitMap = new Map(this.overLimitCells().map(c => [c.number, c.overLimitAmount]));
                       this.acknowledgedOverLimits.update(currentMap => {
                         const newMap = new Map(currentMap);
@@ -862,21 +893,32 @@ export class CodeAnalyzerComponent implements OnInit {
                         });
                         return newMap;
                       });
+                      this.isGeneratingImage.set(false);
+                      this.voucherQrCodeUrl.set('');
+                      setTimeout(() => this.statusMessage.set(''), 4000);
+                  };
 
+                  try {
+                      await navigator.clipboard.write([
+                          new ClipboardItem({ 'image/png': blob })
+                      ]);
+                      handleSuccess('Img Copy ကူးပြီးပါပြီ! Messenger တွင် Paste (Ctrl+V) ချနိုင်ပါပြီ။');
                   } catch (err) {
-                      console.error(err);
-                      this.statusMessage.set('Clipboard Error: HTTPS required.');
+                      console.warn('Clipboard write failed, showing preview...', err);
+                      // Fallback: Show Image Preview Modal
+                      const url = URL.createObjectURL(blob);
+                      this.previewImageUrl.set(url);
+                      this.showImagePreview.set(true);
+                      handleSuccess('အလိုအလျောက် Copy မရပါ။ ပုံကို ဖိနှိပ်ပြီး Copy ယူပေးပါ။');
                   }
-                  
-                  setTimeout(() => this.statusMessage.set(''), 4000);
-                  this.isGeneratingImage.set(false);
               }, 'image/png');
           } catch (e) {
               console.error(e);
               this.isGeneratingImage.set(false);
               this.statusMessage.set('Error generating image.');
+              this.voucherQrCodeUrl.set(''); // Clean up
           }
-      }, 10);
+      }, 100);
   }
 
   async copyHeldListAsImage() {
@@ -894,6 +936,8 @@ export class CodeAnalyzerComponent implements OnInit {
       this.isGeneratingImage.set(true);
       this.imageGenerationTime.set(this.datePipe.transform(new Date(), 'dd/MM/yyyy, h:mm:ss a') || '');
       
+      await this.prepareVoucherWithQr(list);
+      
       setTimeout(async () => {
           const element = document.getElementById('held-voucher-capture');
           if (!element) {
@@ -903,7 +947,7 @@ export class CodeAnalyzerComponent implements OnInit {
 
           try {
               const canvas = await html2canvas(element, {
-                  scale: 1.5,
+                  scale: 3, // Increased scale for clearer QR
                   backgroundColor: '#ffffff', 
                   logging: false,
                   useCORS: true
@@ -915,12 +959,9 @@ export class CodeAnalyzerComponent implements OnInit {
                       this.isGeneratingImage.set(false);
                       return;
                   }
-                  try {
-                      await navigator.clipboard.write([
-                          new ClipboardItem({ 'image/png': blob })
-                      ]);
-                      this.statusMessage.set('Held Img Copy ကူးပြီးပါပြီ! Messenger တွင် Paste (Ctrl+V) ချနိုင်ပါပြီ။');
-                      
+
+                  const handleSuccess = (msg: string) => {
+                      this.statusMessage.set(msg);
                       // After copying, move from held to acknowledged.
                       this.acknowledgedOverLimits.update(ackMap => {
                          const newAckMap = new Map(ackMap);
@@ -938,21 +979,100 @@ export class CodeAnalyzerComponent implements OnInit {
                          });
                          return newHeldMap;
                       });
-                      
+                      this.isGeneratingImage.set(false);
+                      this.voucherQrCodeUrl.set('');
+                      setTimeout(() => this.statusMessage.set(''), 4000);
+                  };
+
+                  try {
+                      await navigator.clipboard.write([
+                          new ClipboardItem({ 'image/png': blob })
+                      ]);
+                      handleSuccess('Held Img Copy ကူးပြီးပါပြီ! Messenger တွင် Paste (Ctrl+V) ချနိုင်ပါပြီ။');
                   } catch (err) {
-                      console.error(err);
-                      this.statusMessage.set('Clipboard Error: HTTPS required.');
+                      console.warn('Clipboard write failed, showing preview...', err);
+                      // Fallback: Show Image Preview Modal
+                      const url = URL.createObjectURL(blob);
+                      this.previewImageUrl.set(url);
+                      this.showImagePreview.set(true);
+                      handleSuccess('အလိုအလျောက် Copy မရပါ။ ပုံကို ဖိနှိပ်ပြီး Copy ယူပေးပါ။');
                   }
                   
-                  setTimeout(() => this.statusMessage.set(''), 4000);
-                  this.isGeneratingImage.set(false);
               }, 'image/png');
           } catch (e) {
               console.error(e);
               this.isGeneratingImage.set(false);
               this.statusMessage.set('Error generating image.');
+              this.voucherQrCodeUrl.set(''); // Clean up
           }
-      }, 10);
+      }, 100);
+  }
+
+  // --- Methods: Paste Handling ---
+  async handlePaste(event: ClipboardEvent, target: 'main' | 'inbox') {
+    const clipboardData = event.clipboardData;
+    if (!clipboardData) {
+      return;
+    }
+
+    // Prioritize text paste. If plain text is available, let the browser handle it.
+    // The default browser action is the most reliable way to paste text.
+    if (clipboardData.types.includes('text/plain')) {
+      return;
+    }
+
+    // If no text, check for an image file for QR code scanning.
+    if (clipboardData.files && clipboardData.files.length > 0) {
+      const file = clipboardData.files[0];
+      if (file.type.startsWith('image/')) {
+        event.preventDefault(); // We are handling this paste.
+
+        this.statusMessage.set('ပုံကို စစ်ဆေးနေသည်...');
+        const qrDataString = await this.qrService.scanQrCodeFromBlob(file);
+
+        if (qrDataString) {
+          try {
+            const qrData: QrBetData = JSON.parse(qrDataString);
+            if (qrData.v === 1 && Array.isArray(qrData.d)) {
+              const formattedText = qrData.d.map(bet => `${bet[0]} ${bet[1]}`).join('\n');
+              
+              if (target === 'main') {
+                this.userInput.set(formattedText);
+                this.statusMessage.set('QR မှ စာရင်းသွင်းပြီးပါပြီ။');
+              } else { // target === 'inbox'
+                this.updateInboxInput(formattedText); // Sets the text area
+                
+                if (qrData.a && typeof qrData.a === 'string') {
+                    const agentName = qrData.a;
+                    this.selectedAgentForInbox.set(agentName);
+                    
+                    const existing = this.agents().find(a => a.name.toLowerCase() === agentName.toLowerCase());
+                    if (!existing) {
+                        const newAgent = { name: agentName, commission: 15 }; // Default commission
+                        this.agents.update(a => [...a, newAgent]);
+                        this.persistenceService.set('lottery_agents', this.agents());
+                        this.statusMessage.set(`QR မှ Agent '${agentName}' အသစ်ကိုတွေ့ရှိပြီး အလိုအလျောက် ရွေးချယ်လိုက်သည်။`);
+                    } else {
+                        this.statusMessage.set(`QR မှ Agent '${agentName}' ၏ စာရင်းကို အလိုအလျောက် ရွေးချယ်ပြီးပါပြီ။`);
+                    }
+                } else {
+                    this.statusMessage.set('QR မှ စာရင်းသွင်းပြီးပါပြီ။ Agent ကို ရွေးချယ်ပေးပါ။');
+                }
+              }
+            } else {
+              throw new Error('Invalid QR data format');
+            }
+          } catch (e) {
+            console.error("QR parse error", e);
+            this.statusMessage.set('QR Code မှ အချက်အလက်များ မှားယွင်းနေပါသည်။');
+          }
+        } else {
+          this.statusMessage.set('QR Code မတွေ့ရှိပါ');
+        }
+
+        setTimeout(() => this.statusMessage.set(''), 3000);
+      }
+    }
   }
 
   // --- Methods: Persistence ---
@@ -1163,7 +1283,7 @@ export class CodeAnalyzerComponent implements OnInit {
       this.inboxInput.set('');
   }
   
-  isInboxSubmitDisabled() { return !this.inboxInput(); }
+  isInboxSubmitDisabled() { return !this.inboxInput() || !this.selectedAgentForInbox(); }
 
   updateInboxInput(val: string) {
       this.inboxInput.set(val);
@@ -1505,16 +1625,15 @@ export class CodeAnalyzerComponent implements OnInit {
   
   handleReportRestore(r: AppReport) {
     this.history.set([]);
-    // FIX: The property r.betHistory comes from persisted data and may not strictly be a string[].
-    // To handle this safely, we cast to unknown[], filter for strings, and then process.
-    if (r.betHistory && Array.isArray(r.betHistory)) {
-      // FIX: The original type guard might not be correctly inferred by the compiler version.
-      // Using filter with a type guard is more robust and correctly infers the type.
-      const safeHistory = (r.betHistory as unknown[]).filter((input): input is string => typeof input === 'string');
-      
-      safeHistory.forEach((input: string) => {
-        const bets = this.betParsingService.parseRaw(input, r.lotteryType);
-        this.processNewBets(bets, 'Restored', input);
+    // FIX(2024-07-29): The property r.betHistory comes from persisted data and may not be a string array.
+    // Safely handle this by checking if it's an array and if each item is a string before processing.
+    const betHistory: unknown = r.betHistory;
+    if (Array.isArray(betHistory)) {
+      betHistory.forEach(input => {
+        if (typeof input === 'string') {
+          const bets = this.betParsingService.parseRaw(input, r.lotteryType);
+          this.processNewBets(bets, 'Restored', input);
+        }
       });
     }
     this.showReports.set(false);

@@ -225,11 +225,17 @@ export class BetParsingService {
     if (lotteryType === '2D') {
         if (numPart.endsWith('r')) { 
             const baseNum = numPart.slice(0, -1); 
-            if (baseNum.length === 2 && !isNaN(parseInt(baseNum))) { 
-                // Logic: 12r 100 => 12=50, 21=50
-                const halfAmount = amount / 2;
-                add2D(baseNum, halfAmount); 
-                add2D(baseNum.split('').reverse().join(''), halfAmount); 
+            if (baseNum.length === 2 && !isNaN(parseInt(baseNum))) {
+                const reversedNum = baseNum.split('').reverse().join('');
+                if (baseNum === reversedNum) {
+                    // It's a pair like 55, just add the full amount to it
+                    add2D(baseNum, amount);
+                } else {
+                    // It's not a pair, divide exactly in half, allowing decimals
+                    const halfAmount = amount / 2;
+                    add2D(baseNum, halfAmount);
+                    add2D(reversedNum, halfAmount);
+                }
                 matched = true; 
             } 
         } else if (['apu'].includes(numPart)) { for (let j = 0; j < 10; j++) add2D(`${j}${j}`, amount); matched = true; }
@@ -282,16 +288,91 @@ export class BetParsingService {
             }
         }
     } else if (lotteryType === '3D') {
-        if (numPart.endsWith('p')) {
-            const baseNum = numPart.slice(0, -1);
-            if (baseNum.length === 3 && !isNaN(parseInt(baseNum))) {
-                const perms = this.getUniquePermutations(baseNum);
-                perms.forEach(p => add3D(p, amount));
-                matched = true;
-            }
-        } else if (numPart.length === 3 && !isNaN(parseInt(numPart))) {
+        // Handle direct 3-digit number first for performance
+        if (/^\d{3}$/.test(numPart)) {
             add3D(numPart, amount);
             matched = true;
+        }
+        // Handle keywords 'apu'
+        else if (numPart === 'apu') {
+            for (let i = 0; i < 10; i++) {
+                add3D(`${i}${i}${i}`, amount);
+            }
+            matched = true;
+        } else {
+            const lastChar = numPart.slice(-1).toLowerCase();
+            const basePart = numPart.slice(0, -1);
+
+            if (lastChar === 'r') { // Permutations / Pat Lal
+                if (/^\d{3}$/.test(basePart)) {
+                    const perms = this.getUniquePermutations(basePart);
+                    if (perms.length > 0) {
+                        perms.forEach(p => {
+                            add3D(p, amount);
+                        });
+                        matched = true;
+                    }
+                }
+            } else if (lastChar === 't') { // Hteik / Top digit
+                if (/^\d$/.test(basePart)) {
+                    for (let i = 0; i < 100; i++) {
+                        add3D(`${basePart}${i.toString().padStart(2, '0')}`, amount);
+                    }
+                    matched = true;
+                }
+            } else if (lastChar === 'p') { // Peik / Last digit
+                if (/^\d$/.test(basePart)) {
+                    for (let i = 0; i < 100; i++) {
+                        add3D(`${i.toString().padStart(2, '0')}${basePart}`, amount);
+                    }
+                    matched = true;
+                }
+            } else if (lastChar === 'k') { // Khway / Combinations with repetition
+                if (/^\d+$/.test(basePart)) {
+                    const digits = Array.from(new Set(basePart.split('')));
+                    for (const d1 of digits) {
+                        for (const d2 of digits) {
+                            for (const d3 of digits) {
+                                add3D(`${d1}${d2}${d3}`, amount);
+                            }
+                        }
+                    }
+                    matched = true;
+                }
+            } else if (lastChar === 'a') { // A-par / Contains digit
+                if (/^\d$/.test(basePart)) {
+                    for (let i = 0; i < 1000; i++) {
+                        const numStr = i.toString().padStart(3, '0');
+                        if (numStr.includes(basePart)) {
+                            add3D(numStr, amount);
+                        }
+                    }
+                    matched = true;
+                }
+            } else if (lastChar === 'b' || lastChar === 'v') { // Brake / Sum of digits
+                const targetSum = parseInt(basePart, 10);
+                if (!isNaN(targetSum) && targetSum >= 0 && targetSum <= 9) {
+                    for (let i = 0; i < 1000; i++) {
+                        const numStr = i.toString().padStart(3, '0');
+                        const sum = numStr.split('').reduce((acc, digit) => acc + parseInt(digit, 10), 0);
+                        if (sum % 10 === targetSum) {
+                            add3D(numStr, amount);
+                        }
+                    }
+                    matched = true;
+                }
+            } else {
+                // Handle combined patterns like 1t5p only if no other suffix matched
+                const hteikPeikMatch = numPart.match(/^(\d)t(\d)p$/i);
+                if (hteikPeikMatch) {
+                    const hteik = hteikPeikMatch[1];
+                    const peik = hteikPeikMatch[2];
+                    for (let i = 0; i < 10; i++) {
+                        add3D(`${hteik}${i}${peik}`, amount);
+                    }
+                    matched = true;
+                }
+            }
         }
     }
     

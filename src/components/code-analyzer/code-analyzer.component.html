@@ -1,9 +1,3 @@
-
-
-
-
-
-
 <!-- Panic Mode Overlay -->
 @if (isPanicMode()) {
   <div class="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-center font-mono">
@@ -431,7 +425,7 @@
           }
 
            <section class="bg-slate-800/90 rounded-lg p-4 border border-slate-700 no-print">
-                @if(statusMessage()) { <div class="mb-2 p-2 rounded text-center text-sm" [class]="statusMessage().includes('အောင်မြင်') ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'">{{ statusMessage() }}</div> }
+                @if(statusMessage()) { <div class="mb-2 p-2 rounded text-center text-sm" [class]="statusMessage().includes('အောင်မြင်') || statusMessage().includes('Copy') ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'">{{ statusMessage() }}</div> }
                 
                 <!-- Risk Warning Banner -->
                 @if(licenseService.isAdmin()) {
@@ -454,7 +448,7 @@
 
                 <div class="flex flex-col gap-2">
                     <div class="relative">
-                      <textarea #mainBetInput id="main-bet-input" [ngModel]="userInput()" (ngModelChange)="updateCurrentState('userInput', $event)" (keydown)="onInputKeydown($event)" placeholder="ဥပမာ: 12r 500, apu 100, nk 50&#10;Enter ဖြင့် စာရင်းထည့်သွင်းပြီး Shift+Enter ဖြင့် လိုင်းဆင်းပါ။" class="w-full h-24 bg-slate-900 border border-slate-600 rounded px-3 py-2 focus:ring-yellow-500 resize-y pr-10"></textarea>
+                      <textarea #mainBetInput id="main-bet-input" [ngModel]="userInput()" (ngModelChange)="userInput.set($event)" (paste)="handlePaste($event, 'main')" (keydown)="onInputKeydown($event)" placeholder="ဥပမာ: 12r 500, apu 100, nk 50&#10;Enter ဖြင့် စာရင်းထည့်သွင်းပြီး Shift+Enter ဖြင့် လိုင်းဆင်းပါ။" class="w-full h-24 bg-slate-900 border border-slate-600 rounded px-3 py-2 focus:ring-yellow-500 resize-y pr-10"></textarea>
                       <button (click)="toggleVoiceInput()" 
                               [class]="voiceService.isListening() ? 'text-red-500 animate-pulse' : 'text-slate-400 hover:text-white'"
                               class="absolute top-2 right-2 p-1 bg-slate-800/50 rounded-full hover:bg-slate-700 transition" 
@@ -583,7 +577,7 @@
                     <option [value]="agent.name">{{ agent.name }}</option>
                 }
             </select>
-            <textarea [ngModel]="inboxInput()" (ngModelChange)="updateInboxInput($event)" rows="5" placeholder="Agent မှပို့သောစာရင်းကို ထည့်ပါ..." class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm font-mono"></textarea>
+            <textarea [ngModel]="inboxInput()" (ngModelChange)="updateInboxInput($event)" (paste)="handlePaste($event, 'inbox')" rows="5" placeholder="Agent မှပို့သောစာရင်းကို ထည့်ပါ..." class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm font-mono"></textarea>
             <button (click)="addBetsFromInbox()" [disabled]="isInboxSubmitDisabled()" class="w-full mt-2 bg-lime-600 hover:bg-lime-700 text-white font-bold py-2 rounded transition disabled:bg-slate-600">ထည့်မည်</button>
         </section>
       </div>
@@ -594,14 +588,50 @@
 <!-- MODALS / POPUPS SECTION (MUST BE AT BOTTOM) -->
 <!-- ========================================== -->
 
+<!-- Manual Image Copy Modal (Fallback) -->
+@if (showImagePreview()) {
+    <div class="fixed inset-0 bg-black/90 z-[200] flex flex-col items-center justify-center p-4">
+        <div class="bg-white p-4 rounded-lg shadow-2xl flex flex-col items-center gap-4 max-w-4xl max-h-[90vh]">
+            <div class="text-center text-gray-800 mb-2">
+                <h3 class="font-bold text-lg text-red-600">Auto Copy မရရှိပါ (Browser Security)</h3>
+                <p class="text-sm font-semibold">ပုံကို ဖိနှိပ်ပီး "Copy Image" ယူပါ (သို့မဟုတ်) "Download" လုပ်ပါ။</p>
+                <p class="text-xs text-gray-500">(Right click or Long press the image below)</p>
+            </div>
+            
+            <div class="overflow-auto border-2 border-gray-300 rounded max-w-full">
+                <img [src]="previewImageUrl()" alt="Voucher Preview" class="max-w-full h-auto">
+            </div>
+            
+            <div class="flex gap-4 w-full justify-center">
+                <a [href]="previewImageUrl()" download="voucher-image.png" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded text-sm flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    Download Image
+                </a>
+                <button (click)="closeImagePreview()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-6 rounded text-sm">
+                    ပိတ်မည် (Close)
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 <!-- Hidden Voucher Template for FORWARDABLE Image Capture -->
-<div id="forward-voucher-capture" style="position: absolute; left: -9999px; top: 0; width: 800px; background-color: white; color: black; padding: 20px; font-family: monospace; z-index: -100; border: 2px solid black;">
-    <!-- Header -->
-    <div style="text-align: center; margin-bottom: 10px; border-bottom: 2px solid black; padding-bottom: 10px;">
-        <h3 style="margin: 0; font-size: 32px; font-weight: bold;">--- {{ bookieName() }} ---</h3>
-        <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: bold; color: #444;">
-            နေ့စွဲ: {{ imageGenerationTime() || (lotteryType() === '3D' ? formatDate(drawDate()) : (session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း')) }}
-        </p>
+<div id="forward-voucher-capture" style="position: absolute; left: -9999px; top: 0; width: 800px; background-color: white; color: black; padding: 20px; font-family: monospace; z-index: -100; border: 2px solid black; position: relative;">
+    
+    <!-- Flexible Header to avoid QR overlap -->
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid black; margin-bottom: 20px; padding-bottom: 10px;">
+        <div style="flex: 1;">
+             <h3 style="margin: 0; font-size: 32px; font-weight: bold;">--- {{ bookieName() }} ---</h3>
+             <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: bold; color: #444;">
+                နေ့စွဲ: {{ imageGenerationTime() || (lotteryType() === '3D' ? formatDate(drawDate()) : (session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း')) }}
+             </p>
+        </div>
+        
+        @if (voucherQrCodeUrl()) {
+          <div style="border: 2px solid black; padding: 4px; background: white; margin-left: 20px;">
+            <img [src]="voucherQrCodeUrl()" alt="QR Code" style="width: 250px; height: 250px;">
+          </div>
+        }
     </div>
     
     <!-- Grid Content (Using Flexbox with Borders) -->
@@ -624,13 +654,22 @@
 </div>
 
 <!-- Hidden Voucher Template for HELD Image Capture -->
-<div id="held-voucher-capture" style="position: absolute; left: -9999px; top: 0; width: 800px; background-color: white; color: black; padding: 20px; font-family: monospace; z-index: -100; border: 2px solid black;">
-    <!-- Header -->
-    <div style="text-align: center; margin-bottom: 10px; border-bottom: 2px solid black; padding-bottom: 10px;">
-        <h3 style="margin: 0; font-size: 32px; font-weight: bold;">--- {{ bookieName() }} (Held) ---</h3>
-        <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: bold; color: #444;">
-            နေ့စွဲ: {{ imageGenerationTime() || (lotteryType() === '3D' ? formatDate(drawDate()) : (session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း')) }}
-        </p>
+<div id="held-voucher-capture" style="position: absolute; left: -9999px; top: 0; width: 800px; background-color: white; color: black; padding: 20px; font-family: monospace; z-index: -100; border: 2px solid black; position: relative;">
+    
+    <!-- Flexible Header to avoid QR overlap -->
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid black; margin-bottom: 20px; padding-bottom: 10px;">
+        <div style="flex: 1;">
+             <h3 style="margin: 0; font-size: 32px; font-weight: bold;">--- {{ bookieName() }} (Held) ---</h3>
+             <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: bold; color: #444;">
+                နေ့စွဲ: {{ imageGenerationTime() || (lotteryType() === '3D' ? formatDate(drawDate()) : (session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း')) }}
+             </p>
+        </div>
+        
+        @if (voucherQrCodeUrl()) {
+          <div style="border: 2px solid black; padding: 4px; background: white; margin-left: 20px;">
+            <img [src]="voucherQrCodeUrl()" alt="QR Code" style="width: 250px; height: 250px;">
+          </div>
+        }
     </div>
     
     <!-- Grid Content (Using Flexbox with Borders) -->
