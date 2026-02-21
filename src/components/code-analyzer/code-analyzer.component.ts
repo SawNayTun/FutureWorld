@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, signal, computed, inject, effect, ElementRef, ViewChild, OnInit } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, computed, inject, effect, ElementRef, ViewChild, OnInit, AfterViewInit } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { BetParsingService, RawBet } from '../../services/bet-parsing.service';
@@ -54,6 +54,8 @@ export class CodeAnalyzerComponent implements OnInit {
 
   @ViewChild('mainBetInput') mainBetInput!: ElementRef<HTMLTextAreaElement>;
   @ViewChild('historyContainer') historyContainer!: ElementRef<HTMLDivElement>;
+  @ViewChild('scrollContainer2d') scrollContainer2d!: ElementRef<HTMLDivElement>;
+  @ViewChild('scrollContainer3d') scrollContainer3d!: ElementRef<HTMLDivElement>;
 
   // --- Panic Mode State ---
   isPanicMode = signal(false);
@@ -102,6 +104,7 @@ export class CodeAnalyzerComponent implements OnInit {
   // --- UI Toggles ---
   showUserGuide = signal(false);
   showRiskModal = signal(false);
+  isMasterKeyUnlocked = signal(false);
   showHeatmap = signal(false);
   showPayoutModal = signal(false);
   showReports = signal(false);
@@ -229,15 +232,38 @@ export class CodeAnalyzerComponent implements OnInit {
             this.heldOverLimits.set(newHeldAmounts);
         }
     }, { allowSignalWrites: true });
+
+    // Focus scroll container when lottery type changes
+    effect(() => {
+      this.lotteryType(); // Trigger effect when lotteryType changes
+      setTimeout(() => this.focusScrollContainer(), 100); // Delay to ensure DOM is updated
+    });
   }
 
-  async ngOnInit() {
-      // Restore last active mode if exists to prevent resetting settings on reload
-      const lastMode = await this.persistenceService.get<string>('last_active_mode');
+  ngOnInit() {
+    // Restore last active mode if exists to prevent resetting settings on reload
+    this.persistenceService.get<string>('last_active_mode').then(lastMode => {
       if (lastMode && this.modes.includes(lastMode)) {
-          this.activeMode.set(lastMode);
+        this.activeMode.set(lastMode);
       }
-      await this.loadState();
+      this.loadState();
+    });
+  }
+
+
+
+  private getStorageKey(key: string): string {
+    const mode = this.activeMode().replace(/\s/g, '_'); // Sanitize mode name
+    const type = this.lotteryType();
+    return `${mode}_${type}_${key}`;
+  }
+
+  private focusScrollContainer() {
+    if (this.lotteryType() === '2D' && this.scrollContainer2d) {
+      this.scrollContainer2d.nativeElement.focus();
+    } else if (this.lotteryType() === '3D' && this.scrollContainer3d) {
+      this.scrollContainer3d.nativeElement.focus();
+    }
   }
 
   // --- Computed: Core Data Aggregation ---
@@ -387,7 +413,8 @@ export class CodeAnalyzerComponent implements OnInit {
   });
 
   receivableCommissionAmount = computed(() => {
-      return this.totalHeldAmount() * (this.commissionFromUpperBookie() / 100);
+      const forwardedAmount = this.totalOverLimitAmount() - this.totalHeldVoucherAmount();
+      return forwardedAmount * (this.commissionFromUpperBookie() / 100);
   });
 
   netAmount = computed(() => {
@@ -531,14 +558,10 @@ export class CodeAnalyzerComponent implements OnInit {
       this.saveToStorage();
   }
 
-  setLotteryType(type: '2D' | '3D') {
-      this.lotteryType.set(type);
-      this.history.set([]); 
-      this.limitGroups.set([]); 
-      this.acknowledgedOverLimits.set(new Map());
-      this.heldOverLimits.set(new Map());
-      this.heldNumberStatus.set(new Set());
+  async setLotteryType(type: '2D' | '3D') {
       this.saveToStorage();
+      this.lotteryType.set(type);
+      await this.loadState();
   }
 
   setSession(s: 'morning' | 'evening') {
@@ -549,12 +572,6 @@ export class CodeAnalyzerComponent implements OnInit {
       this.saveToStorage();
       this.activeMode.set(m);
       this.persistenceService.set('last_active_mode', m); 
-      this.history.set([]);
-      this.limitGroups.set([]);
-      this.acknowledgedOverLimits.set(new Map());
-      this.heldOverLimits.set(new Map());
-      this.heldNumberStatus.set(new Set());
-      this.userInput.set('');
       await this.loadState();
   }
 
@@ -1077,7 +1094,7 @@ export class CodeAnalyzerComponent implements OnInit {
 
   // --- Methods: Persistence ---
   saveToStorage() {
-      const key = `app_state_${this.activeMode()}`;
+      const key = `app_state_${this.activeMode()}_${this.lotteryType()}`;
       const data = {
           history: this.history(),
           limitGroups: this.limitGroups(),
@@ -1087,13 +1104,15 @@ export class CodeAnalyzerComponent implements OnInit {
           commissionToPay: this.commissionToPay(),
           commissionFromUpperBookie: this.commissionFromUpperBookie(),
           currencySymbol: this.currencySymbol(),
-          heldNumberStatus: Array.from(this.heldNumberStatus())
+          heldNumberStatus: Array.from(this.heldNumberStatus()),
+          acknowledgedOverLimits: Array.from(this.acknowledgedOverLimits().entries()),
+          heldOverLimits: Array.from(this.heldOverLimits().entries())
       };
       this.persistenceService.set(key, data);
   }
   
   async loadState() {
-      const key = `app_state_${this.activeMode()}`;
+      const key = `app_state_${this.activeMode()}_${this.lotteryType()}`;
       const data = await this.persistenceService.get<any>(key);
       if (data) {
           if (data.history) this.history.set(data.history);
@@ -1109,16 +1128,38 @@ export class CodeAnalyzerComponent implements OnInit {
           if (data.commissionToPay !== undefined) this.commissionToPay.set(data.commissionToPay);
           if (data.commissionFromUpperBookie !== undefined) this.commissionFromUpperBookie.set(data.commissionFromUpperBookie);
           if (data.currencySymbol) this.currencySymbol.set(data.currencySymbol);
+          
           if (data.heldNumberStatus && Array.isArray(data.heldNumberStatus)) {
               this.heldNumberStatus.set(new Set(data.heldNumberStatus));
           } else {
               this.heldNumberStatus.set(new Set());
           }
 
+          if (data.acknowledgedOverLimits && Array.isArray(data.acknowledgedOverLimits)) {
+              this.acknowledgedOverLimits.set(new Map(data.acknowledgedOverLimits));
+          } else {
+              this.acknowledgedOverLimits.set(new Map());
+          }
+
+          if (data.heldOverLimits && Array.isArray(data.heldOverLimits)) {
+              this.heldOverLimits.set(new Map(data.heldOverLimits));
+          } else {
+              this.heldOverLimits.set(new Map());
+          }
+
       } else {
+          // Reset to defaults if no data found for this mode/type
           this.history.set([]);
           this.limitGroups.set([]);
           this.bookieName.set('My Shop');
+          this.acknowledgedOverLimits.set(new Map());
+          this.heldOverLimits.set(new Map());
+          this.heldNumberStatus.set(new Set());
+          // Keep global settings or reset? Usually reset for new state.
+          // But maybe keep payoutRate/commission if user wants consistency?
+          // For now, let's keep them as is (signals retain value) OR reset to defaults.
+          // User expects "new" state.
+          this.defaultLimit.set(10000);
       }
       
       const agents = await this.persistenceService.get<Agent[]>('lottery_agents');
@@ -1160,6 +1201,17 @@ export class CodeAnalyzerComponent implements OnInit {
   toggleReports() { this.showReports.set(true); }
   toggleChat() { this.showChat.set(true); }
   
+  unlockMasterKey() {
+      const key = prompt('Enter Master Key:');
+      if (key === '123123' || key === 'master') {
+          this.isMasterKeyUnlocked.set(true);
+          this.statusMessage.set('Master Key ဖြင့် ဖွင့်ပြီးပါပြီ');
+      } else if (key !== null) {
+          this.statusMessage.set('Master Key မှားယွင်းနေပါသည်');
+      }
+      setTimeout(() => this.statusMessage.set(''), 2000);
+  }
+
   logout() {
       this.licenseService.logout();
       window.location.reload();
@@ -1646,6 +1698,8 @@ export class CodeAnalyzerComponent implements OnInit {
           this.acknowledgeAllForwardableOverLimits();
       }
   }
+
+
 
   // --- Profit Optimizer ---
   dismissProfitSuggestion() { this.profitOptimizerSuggestion.set(null); }

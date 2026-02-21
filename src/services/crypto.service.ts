@@ -25,7 +25,7 @@ export class CryptoService {
   }
 
   // Derives a cryptographic key from a password using PBKDF2
-  private async deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
+  private async deriveKey(password: string, salt: BufferSource): Promise<CryptoKey> {
     const keyMaterial = await window.crypto.subtle.importKey(
       'raw',
       this.textEncoder.encode(password),
@@ -62,7 +62,7 @@ export class CryptoService {
     );
     
     // Combine salt, iv, and ciphertext into a single string
-    return `${this.bufferToBase64(salt)}.${this.bufferToBase64(iv)}.${this.bufferToBase64(encryptedData)}`;
+    return `${this.bufferToBase64(salt.buffer)}.${this.bufferToBase64(iv.buffer)}.${this.bufferToBase64(encryptedData)}`;
   }
 
   // Decrypts a formatted string back to a JSON object
@@ -75,7 +75,7 @@ export class CryptoService {
       const iv = this.base64ToBuffer(parts[1]);
       const data = this.base64ToBuffer(parts[2]);
 
-      const key = await this.deriveKey(masterKey, new Uint8Array(salt));
+      const key = await this.deriveKey(masterKey, salt);
 
       const decryptedData = await window.crypto.subtle.decrypt(
         { name: 'AES-GCM', iv: new Uint8Array(iv) },
@@ -97,7 +97,7 @@ export class CryptoService {
     const key = await this.deriveKey(password, salt);
     // Export the derived key as raw data to be our hash
     const rawKey = await window.crypto.subtle.exportKey('raw', key);
-    return `${this.bufferToBase64(salt)}.${this.bufferToBase64(rawKey)}`;
+    return `${this.bufferToBase64(salt.buffer)}.${this.bufferToBase64(rawKey)}`;
   }
 
   // Verifies a password against a stored hash (which includes the salt)
@@ -109,7 +109,7 @@ export class CryptoService {
       const salt = this.base64ToBuffer(parts[0]);
       const hash = this.base64ToBuffer(parts[1]);
 
-      const key = await this.deriveKey(password, new Uint8Array(salt));
+      const key = await this.deriveKey(password, salt);
       const rawKey = await window.crypto.subtle.exportKey('raw', key);
 
       // Constant-time comparison is not strictly necessary here, but good practice.

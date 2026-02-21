@@ -1,4 +1,5 @@
 import { Component, ChangeDetectionStrategy, inject, signal, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { LicenseService } from '../../services/license.service';
 
@@ -6,7 +7,8 @@ import { LicenseService } from '../../services/license.service';
   selector: 'app-activation',
   templateUrl: './activation.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule]
+  standalone: true,
+  imports: [CommonModule, ReactiveFormsModule]
 })
 export class ActivationComponent implements OnInit {
   licenseService = inject(LicenseService);

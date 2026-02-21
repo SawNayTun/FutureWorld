@@ -1,8 +1,8 @@
-import '@angular/compiler';
+
 import { bootstrapApplication } from '@angular/platform-browser';
 import { provideZonelessChangeDetection, importProvidersFrom } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { AppComponent } from './src/app.component';
+import { AppComponent } from './app.component';
 
 bootstrapApplication(AppComponent, {
   providers: [

@@ -2,8 +2,8 @@ import { Component, ChangeDetectionStrategy, inject, signal, output, effect, Vie
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { FirebaseService, Contact, FriendRequest, ChatMessage } from '../../services/firebase.service';
-import jsQR from 'jsqr';
-import QRCode from 'qrcode';
+// import jsQR from 'jsqr';
+// import QRCode from 'qrcode';
 
 @Component({
   selector: 'app-chat',
@@ -137,9 +137,10 @@ export class ChatComponent {
   async showMyQr() {
       if (this.firebaseService.myId) {
           try {
-              const url = await QRCode.toDataURL(this.firebaseService.myId, { width: 256, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
-              this.myQrCodeUrl.set(url);
-              this.showQrModal.set(true);
+              // const url = await QRCode.toDataURL(this.firebaseService.myId, { width: 256, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
+              // this.myQrCodeUrl.set(url);
+              // this.showQrModal.set(true);
+              this.statusMessage.set('QR စနစ် ခေတ္တပိတ်ထားပါသည်');
           } catch(e) {
               console.error(e);
               this.statusMessage.set('QR ထုတ်မရပါ');
@@ -200,7 +201,8 @@ export class ChatComponent {
                       
                       const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
                       // Use jsQR to scan
-                      const code = jsQR(imageData.data, imageData.width, imageData.height);
+                      // const code = jsQR(imageData.data, imageData.width, imageData.height);
+                      const code: any = null;
                       
                       if (code) {
                           this.targetIdInput.set(code.data);

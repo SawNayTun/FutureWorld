@@ -32,16 +32,22 @@ export class LicenseService {
   formattedExpiryDate = signal('');
 
   async init(): Promise<void> {
-    const navigationEntries = performance.getEntriesByType("navigation");
+    try {
+      const navigationEntries = performance.getEntriesByType("navigation");
 
-    if (navigationEntries.length > 0) {
-        const navigation = navigationEntries[0] as PerformanceNavigationTiming;
-        if (navigation.type !== 'reload') {
-            // It's a new navigation. Clear session.
-            sessionStorage.removeItem(this.LICENSE_KEY);
-        }
-    } else {
-        sessionStorage.removeItem(this.LICENSE_KEY);
+      if (navigationEntries.length > 0) {
+          const navigation = navigationEntries[0] as PerformanceNavigationTiming;
+          if (navigation.type !== 'reload') {
+              // It's a new navigation. Clear session.
+              sessionStorage.removeItem(this.LICENSE_KEY);
+          }
+      } else {
+          sessionStorage.removeItem(this.LICENSE_KEY);
+      }
+    } catch (e) {
+      console.warn('Performance API error:', e);
+      // Fallback: assume new session if error
+      sessionStorage.removeItem(this.LICENSE_KEY);
     }
     
     // Ensure Admin Hash exists

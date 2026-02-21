@@ -1,4 +1,5 @@
 import { Component, ChangeDetectionStrategy, inject, signal, OnInit, computed, output } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CryptoService } from '../../services/crypto.service';
 import { LicenseService, LicenseDetails } from '../../services/license.service';
@@ -15,7 +16,8 @@ interface ManagedUser {
   selector: 'app-license-generator',
   templateUrl: './license-generator.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, FormsModule]
+  standalone: true,
+  imports: [CommonModule, ReactiveFormsModule, FormsModule]
 })
 export class LicenseGeneratorComponent implements OnInit {
   private fb = inject(FormBuilder);

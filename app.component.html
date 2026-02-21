@@ -1,4 +1,4 @@
-<main class="min-h-screen antialiased">
+<main class="h-screen antialiased">
   @switch (licenseService.licenseState()) {
     @case ('UNINITIALIZED') {
       <div class="flex items-center justify-center min-h-screen">
@@ -16,13 +16,15 @@
           <app-license-generator (close)="toggleAdminPanel()" />
         }
       }
-      <app-code-analyzer />
+      <div class="h-full">
+        <app-code-analyzer />
+      </div>
     }
     @case ('EXPIRING_SOON') {
        <div class="fixed top-0 left-0 right-0 bg-orange-500/95 text-white text-center p-2 text-sm font-bold z-50 shadow-lg no-print">
         <p>သင်၏လိုင်စင်သည် <span class="font-mono">{{ licenseService.formattedExpiryDate() }}</span> တွင် သက်တမ်းကုန်ဆုံးရန် နီးကပ်နေပါပြီ။ ကျေးဇူးပြု၍ သင်၏ အက်ဒမင်ထံ ဆက်သွယ်ပါ။</p>
       </div>
-      <div class="pt-10">
+      <div class="pt-10 h-full">
         <app-code-analyzer />
       </div>
     }

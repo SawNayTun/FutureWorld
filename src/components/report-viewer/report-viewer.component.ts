@@ -1,5 +1,6 @@
 
 import { Component, ChangeDetectionStrategy, signal, computed, output, OnInit, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { Report } from '../../models/app.models';
 import { PersistenceService } from '../../services/persistence.service';
 
@@ -12,6 +13,8 @@ interface GridCell {
   selector: 'app-report-viewer',
   templateUrl: './report-viewer.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: true,
+  imports: [CommonModule]
 })
 export class ReportViewerComponent implements OnInit {
   close = output<void>();
@@ -23,7 +26,7 @@ export class ReportViewerComponent implements OnInit {
   statusMessage = signal<string>('');
   reportToDelete = signal<Report | null>(null);
   
-  modes = ['အားလုံး', 'အလယ်ဒိုင်', 'ဒိုင်ကြီး', 'အေးဂျင့်'];
+  modes = ['အားလုံး', 'အလယ်ဒိုင်', 'ဒိုင်ကြီး'];
   activeModeFilter = signal(this.modes[0]);
 
   lotteryTypes = ['အားလုံး', '2D', '3D'];
@@ -32,7 +35,7 @@ export class ReportViewerComponent implements OnInit {
   // Helper to normalize mode strings for filtering (handles Eng/Burmese mix)
   private normalizeMode(mode: string | undefined): string {
       const m = (mode || '').trim().toLowerCase();
-      if (['agent', 'အေးဂျင့်'].includes(m)) return 'agent';
+      if (['agent'].includes(m)) return 'agent';
       if (['middle', 'middle bookie', 'အလယ်ဒိုင်'].includes(m)) return 'middle';
       if (['main', 'main bookie', 'ဒိုင်ကြီး'].includes(m)) return 'main';
       if (['all', 'အားလုံး'].includes(m)) return 'all';

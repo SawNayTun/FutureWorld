@@ -16,8 +16,12 @@
               "base": "./dist",
               "browser": "."
             },
-            "browser": "index.tsx",
-            "tsConfig": "tsconfig.json"
+            "browser": "main.ts",
+            "tsConfig": "tsconfig.json",
+            "styles": [
+              "styles.css"
+            ],
+
           },
           "configurations": {
             "production": {

@@ -151,7 +151,7 @@
                                     <td class="py-2 font-mono text-green-400 text-right print:text-green-600">{{ report.receivableCommissionAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) }}</td>
                                 </tr>
                            }
-                           @if(report.mode === 'အေးဂျင့်') {
+                           @if(report.mode === 'agent') {
                                 <tr class="border-b border-slate-800 print:border-gray-200">
                                     <td class="py-2 text-slate-400 print:text-gray-600">ရမည့် ကော်မရှင် ({{ report.agentCommissionFromBookie }}%)</td>
                                     <td class="py-2 font-mono text-green-400 text-right print:text-green-600">{{ report.agentCommissionEarned.toLocaleString('en-US', {minimumFractionDigits: 2}) }}</td>
