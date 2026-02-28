@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>၂လုံးထီ စီမံခန့်ခွဲမှုစနစ်</title>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Add html2canvas for capturing DOM as image -->
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <style>
+      @media print {
+        @page {
+          margin: 0;
+          size: auto;
+        }
+
+        /* Hide everything initially */
+        body * {
+          visibility: hidden;
+        }
+        
+        /* Reset body/html for printing */
+        html, body {
+          height: auto !important;
+          overflow: visible !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+
+        /* Make printable area visible */
+        .printable-area, .printable-area * {
+          visibility: visible;
+        }
+
+        /* Base styles for printable area */
+        .printable-area {
+          position: absolute !important;
+          left: 0 !important;
+          top: 0 !important;
+          width: 100% !important;
+          margin: 0 !important;
+          background: white !important;
+          color: black !important;
+          border: none !important;
+          border-radius: 0 !important;
+          height: auto !important;
+          min-height: 0 !important;
+          overflow: visible !important;
+          display: block !important;
+          z-index: 99999 !important;
+          bottom: auto !important;
+        }
+
+        /* --- A4 Report Styles --- */
+        .printable-area.a4-report {
+          width: 100% !important;
+          padding: 5mm !important;
+          font-size: 10pt !important;
+        }
+
+        /* --- POS Voucher Styles --- */
+        .printable-area.pos-voucher {
+          width: 72mm !important; /* Optimized for 80mm thermal paper */
+          max-width: 100% !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          font-size: 12px !important; /* Sharp text for thermal printers */
+          line-height: 1.2 !important;
+        }
+        
+        .printable-area.pos-voucher h3 {
+          font-size: 16px !important;
+          margin-bottom: 5px !important;
+        }
+        
+        .printable-area.pos-voucher .dashed-line {
+          border-bottom: 1px dashed #000 !important;
+          margin: 5px 0 !important;
+        }
+
+        /* Ensure text colors are black for legibility */
+        .printable-area div, .printable-area p, .printable-area span, .printable-area h3, .printable-area h4, .printable-area h5, .printable-area td, .printable-area th {
+          color: black !important;
+          background-color: transparent !important;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+
+        /* Add borders for tables/grids if needed */
+        .printable-area .grid-cols-10 > div {
+          border: 1px solid #ccc;
+          background-color: #f0f0f0 !important;
+        }
+        
+        /* Highlight styles */
+        .printable-area .text-yellow-300, 
+        .printable-area .text-green-400,
+        .printable-area .text-red-400 { 
+            font-weight: bold; 
+            color: #000 !important;
+        }
+
+        /* Hide elements marked as no-print */
+        .no-print { 
+            display: none !important; 
+        }
+        
+        /* Force tables to show borders */
+        table, th, td {
+          border-collapse: collapse;
+        }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "rxjs": "https://esm.sh/rxjs@^7.8.2?conditions=es2015",
+    "rxjs/operators": "https://esm.sh/rxjs@^7.8.2/operators?conditions=es2015",
+    "rxjs/ajax": "https://esm.sh/rxjs@^7.8.2/ajax?conditions=es2015",
+    "rxjs/webSocket": "https://esm.sh/rxjs@^7.8.2/webSocket?conditions=es2015",
+    "rxjs/testing": "https://esm.sh/rxjs@^7.8.2/testing?conditions=es2015",
+    "rxjs/fetch": "https://esm.sh/rxjs@^7.8.2/fetch?conditions=es2015",
+    "@google/genai": "https://esm.sh/@google/genai@^1.35.0?external=rxjs",
+    "@angular/common/http": "https://esm.sh/@angular/common@^21.0.8/http?external=rxjs",
+    "@angular/compiler": "https://esm.sh/@angular/compiler@^21.0.8?external=rxjs",
+    "@angular/core": "https://esm.sh/@angular/core@^21.0.8?external=rxjs",
+    "@angular/platform-browser": "https://esm.sh/@angular/platform-browser@^21.0.8?external=rxjs",
+    "@angular/forms": "https://esm.sh/@angular/forms@^21.0.8?external=rxjs",
+    "@angular/common": "https://esm.sh/@angular/common@^21.0.8?external=rxjs",
+    "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
+    "firebase/database": "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js",
+    "jsqr": "https://esm.sh/jsqr@1.4.0",
+    "qrcode": "https://esm.sh/qrcode@1.5.3",
+    "firebase/": "https://esm.sh/firebase@^12.10.0/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-slate-900 text-gray-300">
+    <app-root></app-root>
+    <script type="module" src="./index.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,47 @@
+<main class="min-h-screen antialiased">
+  @switch (licenseService.licenseState()) {
+    @case ('UNINITIALIZED') {
+      <div class="flex items-center justify-center min-h-screen">
+        <p class="text-lg">စတင်လုပ်ဆောင်နေသည်...</p>
+      </div>
+    }
+    @case ('VALID') {
+      @if (licenseService.isAdmin()) {
+        <div class="absolute top-4 right-4 z-10">
+          <button (click)="toggleAdminPanel()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-2 px-4 rounded transition">
+            အက်ဒမင် Panel
+          </button>
+        </div>
+        @if(showAdminPanel()) {
+          <app-license-generator (close)="toggleAdminPanel()" />
+        }
+      }
+      <app-code-analyzer />
+    }
+    @case ('EXPIRING_SOON') {
+       <div class="fixed top-0 left-0 right-0 bg-orange-500/95 text-white text-center p-2 text-sm font-bold z-50 shadow-lg no-print">
+        <p>သင်၏လိုင်စင်သည် <span class="font-mono">{{ licenseService.formattedExpiryDate() }}</span> တွင် သက်တမ်းကုန်ဆုံးရန် နီးကပ်နေပါပြီ။ ကျေးဇူးပြု၍ သင်၏ အက်ဒမင်ထံ ဆက်သွယ်ပါ။</p>
+      </div>
+      <div class="pt-10">
+        <app-code-analyzer />
+      </div>
+    }
+    @case ('NO_LICENSE') {
+      <app-activation />
+    }
+    @case ('INVALID') {
+       <div class="flex flex-col items-center justify-center min-h-screen text-center p-4">
+        <h2 class="text-3xl font-bold text-red-500 mb-4">လိုင်စင်မှားယွင်းနေသည်</h2>
+        <p class="text-slate-400 mb-6">ထည့်သွင်းလိုက်သော လိုင်စင်ကီးသည် မှားယွင်းနေပါသည် သို့မဟုတ် ပျက်စီးနေပါသည်။ ကျေးဇူးပြု၍ လိုင်စင်ကီးအမှန်ဖြင့် ပြန်လည်အသက်သွင်းပါ။</p>
+        <app-activation />
+      </div>
+    }
+    @case ('EXPIRED') {
+      <div class="flex flex-col items-center justify-center min-h-screen text-center p-4">
+        <h2 class="text-3xl font-bold text-orange-500 mb-4">လိုင်စင်သက်တမ်းကုန်ဆုံးသွားပါပြီ</h2>
+        <p class="text-slate-400 mb-6">သင်၏လိုင်စင်သည် သက်တမ်းကုန်ဆုံးသွားပါပြီ။ လိုင်စင်အသစ်အတွက် သင်၏အက်ဒမင်ထံ ဆက်သွယ်ပါ။</p>
+        <app-activation />
+      </div>
+    }
+  }
+</main>

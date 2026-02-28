@@ -1,0 +1,240 @@
+
+<div class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 print:items-start print:justify-start print:p-0">
+  <div class="w-full h-full max-w-7xl max-h-[90vh] bg-slate-800 border border-blue-700 rounded-lg shadow-2xl flex flex-col relative print:w-full print:h-auto print:max-w-none print:shadow-none print:border-none">
+    
+    <!-- Header and Close Button -->
+    <header class="flex justify-between items-center p-4 border-b border-slate-700 no-print">
+      <h2 class="text-2xl font-bold text-blue-400">မှတ်တမ်းများ (Reports)</h2>
+      <button (click)="closePanel()" class="text-slate-400 hover:text-white transition-colors p-2 hover:bg-slate-700 rounded-full cursor-pointer" title="Close Panel">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </header>
+    
+    <!-- Status Message -->
+    @if (statusMessage()) {
+      <div class="p-3 mx-4 mt-4 text-center text-sm font-medium text-green-300 bg-green-900/50 rounded-lg border border-green-700 no-print">
+        {{ statusMessage() }}
+      </div>
+    }
+
+    <!-- Summary Cards -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 no-print">
+      <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-600">
+        <h3 class="text-sm font-semibold text-slate-400">ယခုအပတ် အကျဉ်းချုပ်</h3>
+        <p class="text-lg font-bold text-green-400">{{ weeklySummary().sales.toLocaleString() }} {{ summaryCurrencySymbol() }}</p>
+        <p class="text-sm" [class]="weeklySummary().net >= 0 ? 'text-green-300' : 'text-red-400'">
+          အသားတင်: {{ weeklySummary().net.toLocaleString('en-US', { minimumFractionDigits: 2 }) }} {{ summaryCurrencySymbol() }}
+        </p>
+      </div>
+       <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-600">
+        <h3 class="text-sm font-semibold text-slate-400">ယခုလ အကျဉ်းချုပ်</h3>
+        <p class="text-lg font-bold text-green-400">{{ monthlySummary().sales.toLocaleString() }} {{ summaryCurrencySymbol() }}</p>
+        <p class="text-sm" [class]="monthlySummary().net >= 0 ? 'text-green-300' : 'text-red-400'">
+          အသားတင်: {{ monthlySummary().net.toLocaleString('en-US', { minimumFractionDigits: 2 }) }} {{ summaryCurrencySymbol() }}
+        </p>
+      </div>
+       <div class="bg-slate-900/50 p-3 rounded-lg border border-slate-600">
+        <h3 class="text-sm font-semibold text-slate-400">ယခုနှစ် အကျဉ်းချုပ်</h3>
+        <p class="text-lg font-bold text-green-400">{{ yearlySummary().sales.toLocaleString() }} {{ summaryCurrencySymbol() }}</p>
+        <p class="text-sm" [class]="yearlySummary().net >= 0 ? 'text-green-300' : 'text-red-400'">
+          အသားတင်: {{ yearlySummary().net.toLocaleString('en-US', { minimumFractionDigits: 2 }) }} {{ summaryCurrencySymbol() }}
+        </p>
+      </div>
+    </section>
+
+    <!-- Main Content -->
+    <div class="flex-grow flex gap-4 p-4 overflow-hidden">
+      
+      <!-- Left: Report List -->
+      <div class="w-1/3 flex flex-col no-print">
+        <div class="flex gap-2 mb-2">
+            <div class="bg-slate-900/50 rounded-lg p-1 flex items-center gap-1 border border-slate-700 w-1/2">
+              @for (type of lotteryTypes; track type) {
+                  <button (click)="setTypeFilter(type)" [class]="'flex-1 text-center py-1.5 px-2 rounded-md transition text-xs font-bold cursor-pointer ' + (activeTypeFilter() === type ? 'bg-purple-600 text-white shadow-md' : 'bg-transparent text-gray-400 hover:bg-slate-700/50')">
+                    {{ type }}
+                  </button>
+              }
+            </div>
+            <div class="bg-slate-900/50 rounded-lg p-1 flex items-center gap-1 border border-slate-700 flex-grow">
+                @for (mode of modes; track mode) {
+                  <button (click)="setModeFilter(mode)" [class]="'flex-1 text-center py-1.5 px-2 rounded-md transition text-xs font-bold cursor-pointer ' + (activeModeFilter() === mode ? 'bg-blue-600 text-white shadow-md' : 'bg-transparent text-gray-400 hover:bg-slate-700/50')">
+                    {{ mode }}
+                  </button>
+                }
+            </div>
+        </div>
+        <div class="flex-grow bg-slate-900/50 p-2 rounded-lg border border-slate-700 overflow-y-auto">
+          @if (filteredReports().length > 0) {
+            <div class="space-y-2">
+              @for (report of filteredReports(); track report.id) {
+                <div [class]="'rounded-md border flex items-center gap-1 transition-colors ' + (selectedReport()?.id === report.id ? 'bg-blue-800 border-blue-500' : 'bg-slate-800 border-slate-600')">
+                  <div (click)="selectReport(report)" class="flex-grow p-3 cursor-pointer hover:bg-slate-700/50 rounded-l-md select-none">
+                    <div class="flex justify-between items-start pointer-events-none">
+                        <div>
+                            <p class="font-bold text-white">{{ formatDate(report.date) }} <span class="text-yellow-400">{{ report.lotteryType === '2D' ? (report.session === 'morning' ? 'မနက်' : 'ညနေ') : report.lotteryType }}</span></p>
+                            <p class="text-xs text-slate-400">{{ report.mode }}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-mono text-green-400">{{ report.totalBetAmount.toLocaleString() }} {{ report.currencySymbol || 'K' }}</p>
+                            <p class="text-xs font-mono" [class]="report.netAmount >= 0 ? 'text-green-300' : 'text-red-400'">{{ report.netAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) }} {{ report.currencySymbol || 'K' }}</p>
+                        </div>
+                    </div>
+                  </div>
+                  <button (click)="deleteReport(report); $event.stopPropagation()" class="flex-shrink-0 p-2 mr-1 text-slate-500 hover:text-red-400 rounded-full hover:bg-slate-700 transition-colors cursor-pointer" title="ဖျက်မည်">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              }
+            </div>
+          } @else {
+            <div class="flex items-center justify-center h-full">
+              <p class="text-slate-500">မှတ်တမ်းများ မရှိသေးပါ</p>
+            </div>
+          }
+        </div>
+      </div>
+
+      <!-- Right: Report Detail -->
+      <div class="w-2/3 bg-slate-900/50 p-4 rounded-lg border border-slate-700 overflow-y-auto">
+        @if (selectedReport(); as report) {
+          <!-- Report Detail Card: Dark on Screen, White on Print -->
+          <div class="printable-area bg-slate-900 text-slate-300 p-6 rounded shadow-sm border border-slate-700 print:bg-white print:text-black print:border-none print:pb-10">
+            <div class="flex justify-between items-center mb-6 border-b border-slate-700 pb-4 print:border-gray-300">
+               <div>
+                   <h3 class="text-xl font-bold text-white print:text-black">
+                      {{ report.lotteryType === '2D' ? formatDate(report.date) + ' - ' + (report.session === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း') : report.drawDate }}
+                  </h3>
+                  <p class="text-sm text-slate-500 font-bold mt-1 print:text-gray-500">{{ report.mode }} Report | ဒိုင်: {{ report.bookieName }}</p>
+               </div>
+               <div class="no-print flex gap-2">
+                  <!-- Restore Button -->
+                  <button (click)="onRestore()" class="bg-yellow-600 hover:bg-yellow-700 text-white text-xs font-bold py-2 px-4 rounded transition flex items-center gap-1 cursor-pointer" title="မူလနေရာသို့ ပြန်တင်ပြီး ပြင်ဆင်မည်">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                    ပြန်တင်မည်
+                  </button>
+                  <button (click)="printReport()" class="bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold py-2 px-4 rounded transition cursor-pointer">ပုံနှိပ်မည်</button>
+                  <button (click)="deleteReport(report)" class="bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 px-4 rounded transition cursor-pointer">ဖျက်မည်</button>
+               </div>
+            </div>
+            
+            <!-- Modified Layout for Print -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 print:block print:space-y-4">
+              <!-- Financial Details (Table format) -->
+              <div class="text-sm">
+                  <table class="w-full text-left">
+                      <tbody>
+                          <tr class="border-b border-slate-800 print:border-gray-200">
+                              <td class="py-2 text-slate-400 print:text-gray-600">စုစုပေါင်း ရောင်းရငွေ</td>
+                              <td class="py-2 font-mono font-bold text-right text-white print:text-black">{{ report.totalBetAmount.toLocaleString() }}</td>
+                          </tr>
+                          @if(report.mode !== 'အေးဂျင့်') {
+                            <tr class="border-b border-slate-800 print:border-gray-200">
+                                <td class="py-2 text-slate-400 print:text-gray-600">လစ်မစ်ကျော် (ကာသီး)</td>
+                                <td class="py-2 font-mono text-red-400 text-right print:text-red-600">{{ report.totalOverLimitAmount.toLocaleString() }}</td>
+                            </tr>
+                            <tr class="border-b border-slate-800 print:border-gray-200">
+                                <td class="py-2 text-slate-400 print:text-gray-600">ကိုင်ငွေ (Held)</td>
+                                <td class="py-2 font-mono text-blue-400 text-right print:text-blue-600">{{ report.totalHeldAmount.toLocaleString() }}</td>
+                            </tr>
+                            <tr class="border-b border-slate-800 print:border-gray-200">
+                                <td class="py-2 text-slate-400 print:text-gray-600">ပေးရမည့် ကော်မရှင် ({{ report.commissionToPay }}%)</td>
+                                <td class="py-2 font-mono text-orange-400 text-right print:text-orange-600">{{ report.payableCommissionAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) }}</td>
+                            </tr>
+                          }
+                           @if(report.mode === 'အလယ်ဒိုင်') {
+                                <tr class="border-b border-slate-800 print:border-gray-200">
+                                    <td class="py-2 text-slate-400 print:text-gray-600">ရမည့် ကော်မရှင် ({{ report.commissionFromUpperBookie }}%)</td>
+                                    <td class="py-2 font-mono text-green-400 text-right print:text-green-600">{{ report.receivableCommissionAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) }}</td>
+                                </tr>
+                           }
+                           @if(report.mode === 'အေးဂျင့်') {
+                                <tr class="border-b border-slate-800 print:border-gray-200">
+                                    <td class="py-2 text-slate-400 print:text-gray-600">ရမည့် ကော်မရှင် ({{ report.agentCommissionFromBookie }}%)</td>
+                                    <td class="py-2 font-mono text-green-400 text-right print:text-green-600">{{ report.agentCommissionEarned.toLocaleString('en-US', {minimumFractionDigits: 2}) }}</td>
+                                </tr>
+                           }
+                           <tr class="border-t-2 border-slate-700 print:border-gray-300">
+                                <td class="py-3 font-bold text-lg text-white print:text-black">အသားတင် (Net)</td>
+                                <td class="py-3 font-mono font-bold text-lg text-right" [class]="report.netAmount >= 0 ? 'text-green-400 print:text-green-600' : 'text-red-400 print:text-red-600'">
+                                    {{ report.netAmount.toLocaleString('en-US', {minimumFractionDigits: 2}) }}
+                                </td>
+                           </tr>
+                      </tbody>
+                  </table>
+              </div>
+
+              <!-- Bet Data Display -->
+              @if(report.lotteryType === '2D') {
+                <div>
+                  <h4 class="font-bold mb-3 border-b border-slate-700 pb-1 text-slate-300 print:text-black print:border-gray-200">ထိုးကြေးဇယား</h4>
+                  <div class="grid grid-cols-10 gap-px text-center text-xs font-mono border border-slate-700 bg-slate-700 print:border-gray-300 print:bg-gray-300">
+                    @for(cell of reportGrid(); track cell.number) {
+                      <div [class]="'p-1 flex flex-col justify-center ' + (cell.amount > 0 ? 'bg-slate-800 print:bg-blue-100' : 'bg-slate-900 print:bg-white')">
+                        <span class="font-bold text-[10px] text-slate-500 print:text-gray-500">{{ cell.number }}</span>
+                        <span [class]="'font-semibold text-[10px] ' + (cell.amount > 0 ? 'text-white print:text-blue-800' : 'text-slate-700 print:text-gray-300')">{{ cell.amount > 0 ? cell.amount.toLocaleString() : '-' }}</span>
+                      </div>
+                    }
+                  </div>
+                </div>
+              } @else {
+                <!-- Removed max-height for print -->
+                <div class="max-h-96 overflow-y-auto print:max-h-none print:overflow-visible">
+                  <h4 class="font-bold mb-3 border-b border-slate-700 pb-1 text-slate-300 print:text-black print:border-gray-200">3D ထိုးကြေးစာရင်း</h4>
+                  <div class="space-y-1">
+                      @for(item of reportList(); track item.number) {
+                        <div class="flex justify-between items-center bg-slate-800 p-2 rounded border border-slate-700 text-sm print:bg-gray-50 print:border-gray-200">
+                            <span class="font-mono font-bold text-slate-300 print:text-gray-800">{{ item.number }}</span>
+                            <span class="font-mono text-slate-400 print:text-gray-600">{{ item.amount.toLocaleString() }}</span>
+                        </div>
+                      }
+                  </div>
+                </div>
+              }
+              
+              <!-- Raw Bet History -->
+              <div class="md:col-span-2 mt-4 pt-4 border-t border-slate-700 print:border-gray-200">
+                  <h4 class="font-bold mb-2 text-xs text-slate-500 uppercase">Input History Log</h4>
+                  <div class="bg-slate-800 p-3 rounded border border-slate-700 max-h-40 overflow-y-auto print:bg-gray-50 print:border-gray-200 print:max-h-none print:overflow-visible">
+                      <p class="font-mono text-[10px] text-slate-400 whitespace-pre-wrap leading-tight print:text-gray-600">{{ report.betHistory.join('\n') }}</p>
+                  </div>
+              </div>
+            </div>
+          </div>
+        } @else {
+          <div class="flex items-center justify-center h-full">
+            <div class="text-center">
+              <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-12 w-12 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2-2z" /></svg>
+              <h3 class="mt-2 text-sm font-medium text-slate-400">မှတ်တမ်းအသေးစိတ်</h3>
+              <p class="mt-1 text-sm text-slate-500">အသေးစိတ်ကြည့်ရှုရန် ဘယ်ဘက်မှ မှတ်တမ်းတစ်ခုကို ရွေးချယ်ပါ။</p>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  @if (reportToDelete(); as report) {
+    <div class="fixed inset-0 bg-black/70 z-[110] flex items-center justify-center p-4">
+      <div class="w-full max-w-md bg-slate-800 border border-red-700 rounded-lg shadow-2xl p-6 relative flex flex-col text-center">
+        <h3 class="text-lg font-bold text-red-400 mb-2">ဖျက်ရန် အတည်ပြုပါ</h3>
+        <p class="text-slate-300 mb-6">
+          <span class="font-bold">{{ formatDate(report.date) }}</span> ရက်စွဲမှ <span class="font-bold">{{ report.mode }}</span> မှတ်တမ်းကို အမှန်တကယ် ဖျက်လိုပါသလား?<br>
+          <span class="text-sm text-slate-500">ဤလုပ်ဆောင်ချက်ကို နောက်ပြန်ပြင်၍မရပါ။</span>
+        </p>
+        <div class="flex justify-center gap-4">
+          <button (click)="cancelDelete()" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-8 rounded transition cursor-pointer">
+            မလုပ်တော့ပါ
+          </button>
+          <button (click)="confirmDelete()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-8 rounded transition cursor-pointer">
+            ဟုတ်ကဲ့၊ ဖျက်မည်
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

@@ -1,0 +1,1188 @@
+<!-- Panic Mode Overlay -->
+@if (isPanicMode()) {
+  <div class="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-center font-mono">
+      <div class="w-full max-w-sm bg-gray-100 p-6 rounded-lg shadow-lg">
+          <div class="bg-gray-200 p-4 mb-4 text-right text-3xl font-bold text-gray-700 rounded h-16 flex items-center justify-end overflow-hidden">
+              {{ panicInput() || '0' }}
+          </div>
+          <div class="grid grid-cols-4 gap-2">
+              <button class="p-4 bg-white rounded shadow text-xl hover:bg-gray-50" (click)="onPanicCalculatorInput('7')">7</button>
+              <button class="p-4 bg-white rounded shadow text-xl hover:bg-gray-50" (click)="onPanicCalculatorInput('8')">8</button>
+              <button class="p-4 bg-white rounded shadow text-xl hover:bg-gray-50" (click)="onPanicCalculatorInput('9')">9</button>
+              <button class="p-4 bg-orange-400 text-white rounded shadow text-xl hover:bg-orange-500" (click)="onPanicCalculatorInput('/')">÷</button>
+
+              <button class="p-4 bg-white rounded shadow text-xl hover:bg-gray-50" (click)="onPanicCalculatorInput('4')">4</button>
+              <button class="p-4 bg-white rounded shadow text-xl hover:bg-gray-50" (click)="onPanicCalculatorInput('5')">5</button>
+              <button class="p-4 bg-white rounded shadow text-xl hover:bg-gray-50" (click)="onPanicCalculatorInput('6')">6</button>
+              <button class="p-4 bg-orange-400 text-white rounded shadow text-xl hover:bg-orange-500" (click)="onPanicCalculatorInput('*')">×</button>
+
+              <button class="p-4 bg-white rounded shadow text-xl hover:bg-gray-50" (click)="onPanicCalculatorInput('1')">1</button>
+              <button class="p-4 bg-white rounded shadow text-xl hover:bg-gray-50" (click)="onPanicCalculatorInput('2')">2</button>
+              <button class="p-4 bg-white rounded shadow text-xl hover:bg-gray-50" (click)="onPanicCalculatorInput('3')">3</button>
+              <button class="p-4 bg-orange-400 text-white rounded shadow text-xl hover:bg-orange-500" (click)="onPanicCalculatorInput('-')">-</button>
+
+              <button class="p-4 bg-red-500 text-white rounded shadow text-xl hover:bg-red-600" (click)="onPanicCalculatorInput('C')">C</button>
+              <button class="p-4 bg-white rounded shadow text-xl hover:bg-gray-50" (click)="onPanicCalculatorInput('0')">0</button>
+              <button class="p-4 bg-green-500 text-white rounded shadow text-xl hover:bg-green-600" (click)="onPanicCalculatorInput('=')">=</button>
+              <button class="p-4 bg-orange-400 text-white rounded shadow text-xl hover:bg-orange-500" (click)="onPanicCalculatorInput('+')">+</button>
+          </div>
+          <div class="mt-4 text-center text-xs text-gray-400">Standard Calculator App v1.0</div>
+      </div>
+  </div>
+}
+
+<div class="p-4 font-sans text-gray-300 min-h-screen">
+  <header class="mb-4 flex justify-between items-center no-print" [class.mt-12]="licenseService.isAdmin()">
+      <div class="flex items-center gap-4">
+        <h1 class="text-2xl font-bold text-yellow-400">အနာဂတ်ကမ္ဘာ {{ lotteryType() }} စာရင်း</h1>
+        <button (click)="showUserGuide.set(true)" title="အသုံးပြုသူ လမ်းညွှန်" class="bg-slate-700/80 hover:bg-slate-600 text-white font-bold h-8 w-8 rounded-full flex items-center justify-center transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.79 4 4s-1.79 4-4 4c-1.742 0-3.223-.835-3.772-2M12 18.75a.75.75 0 100-1.5.75.75 0 000 1.5z" /></svg>
+        </button>
+      </div>
+      <div class="flex items-center gap-2">
+        @if(licenseService.licenseDetails(); as details) {
+          @if(!licenseService.isAdmin()) {
+            <div class="text-xs text-slate-400 bg-slate-800 px-3 py-1.5 rounded-full">
+                <span>သက်တမ်းကုန်ဆုံးမည့်ရက်: </span>
+                <span class="font-semibold text-amber-400">{{ formatDate(details.expiryDate) }}</span>
+            </div>
+          }
+        }
+        
+        <!-- Risk Analyzer Button -->
+        <button (click)="showRiskModal.set(true)" title="အရှုံး/အမြတ် ခန့်မှန်းရန်" class="bg-rose-600/80 hover:bg-rose-700 text-white text-sm font-bold py-1 px-3 rounded transition">
+            Risk စစ်ဆေးမည်
+        </button>
+
+        <!-- Heatmap Toggle -->
+        <button (click)="toggleHeatmap()" [class]="showHeatmap() ? 'bg-orange-500 text-white' : 'bg-slate-700 text-slate-300'" class="text-sm font-bold py-1 px-3 rounded transition" title="Heatmap အရောင်စုံကြည့်ရန်">
+            အရောင် {{ showHeatmap() ? 'ဖွင့်' : 'ပိတ်' }}
+        </button>
+
+        @if(activeMode() === 'ဒိုင်ကြီး' || activeMode() === 'အလယ်ဒိုင်') {
+          <button (click)="openPayoutModal()" title="ပေါက်ဂဏန်း စာရင်းရှင်းရန် (Alt + P)" class="bg-green-600/80 hover:bg-green-700 text-white text-sm font-bold py-1 px-3 rounded transition">ပေါက်ဂဏန်း စာရင်းရှင်းရန်</button>
+        }
+        <button (click)="backupData()" title="Backup (Alt + B)" class="bg-sky-600/80 hover:bg-sky-700 text-white text-sm font-bold py-1 px-3 rounded transition">Backup</button>
+        <input type="file" #fileInput (change)="handleRestore($event)" hidden accept=".json">
+        <button (click)="fileInput.click()" title="Restore (Alt + R)" class="bg-teal-600/80 hover:bg-teal-700 text-white text-sm font-bold py-1 px-3 rounded transition">Restore</button>
+        <button (click)="toggleReports()" class="bg-blue-600/80 hover:bg-blue-700 text-white text-sm font-bold py-1 px-3 rounded transition">မှတ်တမ်းများ</button>
+        
+        <!-- Chat Button -->
+        <button (click)="toggleChat()" class="bg-indigo-600/80 hover:bg-indigo-700 text-white p-1.5 rounded transition" title="Helper Connect">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+        </button>
+
+        <button (click)="logout()" class="bg-red-600/80 hover:bg-red-700 text-white text-sm font-bold py-1 px-3 rounded transition">ထွက်ရန်</button>
+      </div>
+  </header>
+  
+  <section class="flex flex-col md:flex-row gap-2 no-print">
+    <div class="bg-slate-800/90 rounded-lg p-1 flex items-center gap-1 border border-slate-700 md:w-auto">
+      <button (click)="setLotteryType('2D')" [class]="'flex-1 text-center py-2 px-6 rounded-md transition text-sm font-bold ' + (lotteryType() === '2D' ? 'bg-purple-600 text-white shadow-lg' : 'bg-transparent text-gray-400 hover:bg-slate-700/50')" title="Switch to 2D (Alt + D)">2D</button>
+      <button (click)="setLotteryType('3D')" [class]="'flex-1 text-center py-2 px-6 rounded-md transition text-sm font-bold ' + (lotteryType() === '3D' ? 'bg-purple-600 text-white shadow-lg' : 'bg-transparent text-gray-400 hover:bg-slate-700/50')" title="Switch to 3D (Alt + D)">3D</button>
+    </div>
+    @if (lotteryType() === '2D') {
+      <div class="bg-slate-800/90 rounded-lg p-1 flex items-center gap-1 border border-slate-700 md:w-auto">
+          <button (click)="setSession('morning')" [class]="'flex-1 text-center py-2 px-4 rounded-md transition text-sm font-bold ' + (session() === 'morning' ? 'bg-yellow-600 text-white shadow-lg' : 'bg-transparent text-gray-400 hover:bg-slate-700/50')" title="Toggle Session (Alt + M)">
+            မနက်ပိုင်း
+          </button>
+          <button (click)="setSession('evening')" [class]="'flex-1 text-center py-2 px-4 rounded-md transition text-sm font-bold ' + (session() === 'evening' ? 'bg-yellow-600 text-white shadow-lg' : 'bg-transparent text-gray-400 hover:bg-slate-700/50')" title="Toggle Session (Alt + M)">
+            ညနေပိုင်း
+          </button>
+      </div>
+    } @else {
+      <div class="bg-slate-800/90 rounded-lg p-1 flex items-center gap-2 border border-slate-700 md:w-auto px-3">
+          <label for="drawDate" class="text-sm font-bold text-yellow-400">ဖွင့်ပွဲနေ့စွဲ:</label>
+          <input id="drawDate" type="date" [ngModel]="drawDate()" (ngModelChange)="updateCurrentState('drawDate', $event)" class="bg-slate-700/50 text-white rounded-md py-1.5 px-3 border-none text-sm">
+      </div>
+    }
+    <div class="bg-slate-800/90 rounded-lg p-1 flex items-center gap-1 border border-slate-700 flex-grow">
+        @for (mode of modes; track mode; let i = $index) {
+          <button (click)="setActiveMode(mode)" [class]="'flex-1 text-center py-2 px-4 rounded-md transition text-sm font-bold ' + (activeMode() === mode ? 'bg-blue-600 text-white shadow-lg' : 'bg-transparent text-gray-400 hover:bg-slate-700/50')" [title]="'Switch to ' + mode + ' (Alt + ' + (i + 1) + ')'">
+            {{ mode }}
+          </button>
+        }
+    </div>
+  </section>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
+      
+      <div class="lg:col-span-2 flex flex-col gap-4">
+          <!-- Main Display Panel -->
+          <section class="bg-slate-800/90 rounded-lg p-4 border border-slate-700 flex-grow flex flex-col h-[calc(100vh-280px)]">
+            <h2 class="text-lg font-bold text-yellow-400 mb-4">
+              @if(lotteryType() === '2D') { ပင်မဇယား (Main Grid) } @else { 3D စာရင်း (3D List) }
+            </h2>
+            <!-- SETTINGS ROW -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 items-center text-sm mb-4 no-print">
+              <div class="flex items-center gap-2">
+                <label class="whitespace-nowrap w-28">
+                    @switch(activeMode()) {
+                      @case('အလယ်ဒိုင်') { အလယ်ဒိုင် အမည်: }
+                      @case('ဒိုင်ကြီး') { ဒိုင်ကြီး အမည်: }
+                    }
+                </label>
+                <input type="text" [ngModel]="bookieName()" (ngModelChange)="updateBookieName($event)" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 focus:ring-yellow-500">
+              </div>
+              
+              <div class="flex items-center gap-2"><label class="whitespace-nowrap w-28">ဇတိုး:</label><input type="number" [ngModel]="payoutRate()" (ngModelChange)="updateCurrentState('payoutRate', +$event)" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 focus:ring-yellow-500"></div>
+              <div class="flex items-center gap-2">
+                  <label class="whitespace-nowrap w-28">Default လစ်မစ်:</label>
+                  <input type="number" [ngModel]="defaultLimit()" (ngModelChange)="updateDefaultLimit(+$event)" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 focus:ring-yellow-500">
+              </div>
+              <!-- Manage Limits Dropdown -->
+              <div class="flex items-center justify-end relative">
+                  <button (click)="toggleCustomLimitsDropdown()" class="bg-blue-600/80 hover:bg-blue-700 text-white text-xs font-bold py-1.5 px-3 rounded transition flex items-center gap-1">
+                      သီးသန့်လစ်မစ်များ ({{ limitGroups().length }})
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+                  </button>
+                  
+                  @if (showCustomLimitsDropdown()) {
+                      <div class="absolute top-full right-0 mt-2 w-72 bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-50 overflow-hidden">
+                          <div class="p-2 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
+                              <span class="text-xs font-bold text-slate-300">သီးသန့်လစ်မစ် စာရင်း</span>
+                              <div class="flex gap-2">
+                                  <button (click)="clearAllCustomLimits()" class="text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded" title="သီးသန့်လစ်မစ် အားလုံးဖျက်မည်">Clear All</button>
+                                  <button (click)="openLimitModal()" class="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded">+ New</button>
+                              </div>
+                          </div>
+                          
+                          <!-- BATCH MODIFIER -->
+                          <div class="p-2 bg-slate-900 border-b border-slate-700">
+                              <div class="text-[10px] text-slate-400 mb-1 font-bold">Batch Modify (ရှိပြီးသား လစ်မစ်အားလုံးကို ပြင်ရန်)</div>
+                              <div class="flex gap-1 mb-1">
+                                <input type="number" [ngModel]="batchLimitAmount()" (ngModelChange)="batchLimitAmount.set(+$event)" placeholder="ပမာဏ" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-white">
+                              </div>
+                              <div class="grid grid-cols-3 gap-1">
+                                <button (click)="applyBatchLimitChange('add')" class="bg-blue-600 hover:bg-blue-700 text-white text-[10px] py-1 rounded">+ ပေါင်း</button>
+                                <button (click)="applyBatchLimitChange('sub')" class="bg-orange-600 hover:bg-orange-700 text-white text-[10px] py-1 rounded">- နှုတ်</button>
+                                <button (click)="applyBatchLimitChange('set')" class="bg-teal-600 hover:bg-teal-700 text-white text-[10px] py-1 rounded">= ပြင်</button>
+                              </div>
+                          </div>
+                          
+                          <!-- Groups List -->
+                          <div class="max-h-60 overflow-y-auto">
+                              @for (group of limitGroups(); track group.id) {
+                                  <div class="border-b border-slate-700/50">
+                                      <!-- Group Header (Toggle) -->
+                                      <div class="flex justify-between items-center p-2 hover:bg-slate-700/30 text-xs bg-slate-900 cursor-pointer" (click)="toggleGroup(group.id)">
+                                          <div class="flex items-center gap-2">
+                                              <span class="text-slate-400 text-[10px]">{{ group.isOpen ? '▼' : '►' }}</span>
+                                              <span class="font-bold text-blue-400">{{ group.name }}</span>
+                                          </div>
+                                          <div class="flex items-center gap-2">
+                                              <span class="text-white font-mono bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">{{ group.amount.toLocaleString() }}</span>
+                                              <button (click)="removeLimitGroup(group.id); $event.stopPropagation()" class="text-red-400 hover:text-red-300 p-1 rounded hover:bg-slate-800" title="ဖျက်မည်">
+                                                  &times;
+                                              </button>
+                                          </div>
+                                      </div>
+                                      
+                                      <!-- Expanded Content (Numbers List + Edit) -->
+                                      @if (group.isOpen) {
+                                          <div class="bg-slate-800/50 p-2 text-[10px] border-t border-slate-700/30 animate-fade-in-down">
+                                              <!-- Inline Edit Amount -->
+                                              <div class="flex items-center gap-2 mb-2 pb-2 border-b border-slate-700/30">
+                                                  <span class="text-slate-400">ပြင်ရန်:</span>
+                                                  <input type="number" [value]="group.amount" (change)="updateGroupAmount(group.id, +$any($event.target).value)" 
+                                                          class="w-16 bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-white">
+                                              </div>
+                                              <!-- List of numbers -->
+                                              <div class="flex flex-wrap gap-1">
+                                                  @for (num of group.numbers; track num) {
+                                                      <span class="bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-mono border border-slate-600">{{ num }}</span>
+                                                  }
+                                              </div>
+                                          </div>
+                                      }
+                                  </div>
+                              } @empty {
+                                  <div class="p-4 text-center text-xs text-slate-500">သီးသန့်လစ်မစ် မရှိသေးပါ</div>
+                              }
+                          </div>
+                      </div>
+                  }
+              </div>
+
+              <div class="flex items-center gap-2">
+                  <label class="whitespace-nowrap w-28">Direct ကော်မရှင်:</label>
+                  <input type="number" [ngModel]="commissionToPay()" (ngModelChange)="updateCurrentState('commissionToPay', +$event)" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 focus:ring-yellow-500"><span class="bg-slate-700 px-3 py-1.5 rounded-r-md">%</span>
+                  <span class="text-[10px] text-gray-500" title="စာရင်းထဲမရှိသော Direct Input များအတွက် ဤနှုန်းထားကို သုံးမည်။ Agent များအတွက် သတ်မှတ်ထားသော နှုန်းထားကို သုံးမည်။">🛈</span>
+              </div>
+              
+              @if(activeMode() === 'အလယ်ဒိုင်') {
+                <div class="flex items-center gap-2">
+                  <label class="whitespace-nowrap w-28">ရမည့် ကော်မရှင်:</label>
+                  <input type="number" [ngModel]="commissionFromUpperBookie()" (ngModelChange)="updateCurrentState('commissionFromUpperBookie', +$event)" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 focus:ring-yellow-500"><span class="bg-slate-700 px-3 py-1.5 rounded-r-md">%</span>
+                </div>
+              }
+              
+              <div class="flex items-center gap-2">
+                  <label class="whitespace-nowrap w-28">ငွေကြေး:</label>
+                  <select [ngModel]="currencySymbol()" (ngModelChange)="updateCurrentState('currencySymbol', $event)" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 focus:ring-yellow-500">
+                      @for(c of currencies; track c) { <option [value]="c">{{ c }}</option> }
+                  </select>
+              </div>
+            </div>
+            
+            <!-- DATA DISPLAY (GRID or LIST) -->
+            @if (lotteryType() === '2D') {
+              <div class="flex-grow flex flex-col overflow-hidden text-sm">
+                  <div class="grid gap-2 px-2 py-2 bg-slate-700/50 font-bold text-slate-300 flex-shrink-0 grid-cols-[50px_1fr_100px_100px]">
+                      <div class="text-center">စဉ်</div><div>ထိုးကြေး</div><div class="text-right">စုစုပေါင်း</div>
+                      <div class="text-right">@if(activeMode() === 'ဒိုင်ကြီး') { လစ်မစ်ကျော် } @else { ကာသီး }</div>
+                  </div>
+                  <div class="flex-grow overflow-y-auto">
+                      @for (cell of gridCells(); track cell.number; let odd = $odd) {
+                          <div class="grid gap-2 px-2 py-1.5 border-b border-slate-700/50 grid-cols-[50px_1fr_100px_100px]" 
+                               [class.bg-slate-900/40]="odd && !showHeatmap()" 
+                               [class.font-semibold]="cell.amount > 0"
+                               [class.bg-green-900]="showHeatmap() && cell.amount > 0 && cell.amount <= cell.limit * 0.2"
+                               [class.bg-yellow-900]="showHeatmap() && cell.amount > cell.limit * 0.2 && cell.amount <= cell.limit * 0.8"
+                               [class.bg-orange-800]="showHeatmap() && cell.amount > cell.limit * 0.8 && !cell.isOverLimit"
+                               [class.bg-red-900]="showHeatmap() && cell.isOverLimit">
+                              <div class="text-center font-mono pt-0.5 cursor-pointer" 
+                                   (click)="openLimitModal(cell.number)" 
+                                   [class.text-red-400]="cell.isOverLimit"
+                                   [class.text-blue-400]="cell.hasCustomLimit && !cell.isOverLimit"
+                                   [class.border-b-2]="cell.hasCustomLimit"
+                                   [class.border-blue-500]="cell.hasCustomLimit"
+                                   [title]="cell.hasCustomLimit ? 'သီးသန့်လစ်မစ်: ' + cell.limit : ''">
+                                   {{ cell.number }}
+                              </div>
+                              <div class="font-mono text-xs truncate pt-1 rounded -ml-2 px-2" [title]="cell.betsTooltip" [class.cursor-pointer]="cell.amount > 0" [class.hover:bg-slate-700/50]="cell.amount > 0" (click)="openBetDetailModal(cell.number)">{{ cell.betsString || '-' }}</div>
+                              <div class="text-right font-mono pr-2 pt-0.5" [class.text-red-400]="cell.isOverLimit" [class.text-white]="cell.amount > 0">{{ cell.amount > 0 ? cell.amount.toLocaleString() : '-' }}</div>
+                              <div class="text-right font-mono pr-2 pt-0.5" [class.text-red-400]="cell.isOverLimit">{{ cell.overLimitAmount > 0 ? cell.overLimitAmount.toLocaleString() : '-' }}</div>
+                          </div>
+                      }
+                  </div>
+              </div>
+            } @else {
+               <div class="flex-grow flex flex-col overflow-hidden text-sm">
+                  <input type="text" [ngModel]="search3DTerm()" (ngModelChange)="search3DTerm.set($event)" placeholder="ဂဏန်းဖြင့် ရှာဖွေပါ..." class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 mb-2 focus:ring-yellow-500 text-slate-200 flex-shrink-0">
+                  <div class="grid gap-2 px-2 py-2 bg-slate-700/50 font-bold text-slate-300 flex-shrink-0 grid-cols-[60px_1fr_100px_100px]">
+                      <div class="text-center">ဂဏန်း</div><div>ထိုးကြေး</div><div class="text-right">စုစုပေါင်း</div>
+                      <div class="text-right">လစ်မစ်ကျော်</div>
+                  </div>
+                  <div class="flex-grow overflow-y-auto">
+                      @for (item of filteredListItems(); track item.number; let odd = $odd) {
+                          <div class="grid gap-2 px-2 py-1.5 border-b border-slate-700/50 grid-cols-[60px_1fr_100px_100px]" [class.bg-slate-900/40]="odd" [class.font-semibold]="item.amount > 0">
+                              <div class="text-center font-mono pt-0.5 cursor-pointer" 
+                                   (click)="openLimitModal(item.number)" 
+                                   [class.text-red-400]="item.isOverLimit"
+                                   [class.text-blue-400]="item.hasCustomLimit && !item.isOverLimit"
+                                   [class.border-b-2]="item.hasCustomLimit"
+                                   [class.border-blue-500]="item.hasCustomLimit"
+                                   [title]="item.hasCustomLimit ? 'သီးသန့်လစ်မစ်: ' + item.limit : ''">
+                                   {{ item.number }}
+                              </div>
+                              <div class="font-mono text-xs truncate pt-1 rounded -ml-2 px-2" [title]="item.betsTooltip" [class.cursor-pointer]="item.amount > 0" [class.hover:bg-slate-700/50]="item.amount > 0" (click)="openBetDetailModal(item.number)">{{ item.betsString || '-' }}</div>
+                              <div class="text-right font-mono pr-2 pt-0.5" [class.text-red-400]="item.isOverLimit" [class.text-white]="item.amount > 0">{{ item.amount > 0 ? item.amount.toLocaleString() : '-' }}</div>
+                              <div class="text-right font-mono pr-2 pt-0.5" [class.text-red-400]="item.isOverLimit">{{ item.overLimitAmount > 0 ? item.overLimitAmount.toLocaleString() : '-' }}</div>
+                          </div>
+                      } @empty {
+                        <div class="text-center text-slate-500 pt-10">စာရင်းများ မရှိသေးပါ</div>
+                      }
+                  </div>
+               </div>
+            }
+          </section>
+
+          <!-- Profit Optimizer Panel -->
+          @if (profitOptimizerSuggestion(); as suggestion) {
+            @if (!suggestionAppliedRecently()) {
+              <section class="p-4 bg-slate-800/90 rounded-lg border border-teal-600 no-print">
+                <h3 class="text-base font-bold text-teal-300 mb-3">အမြတ်အစွန်း အကြံပေးစနစ် (Top {{ suggestion.topNumbers.length }})</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <!-- Top Numbers List -->
+                  <div class="bg-slate-900/50 p-2 rounded-md max-h-48 overflow-y-auto">
+                      <div class="grid grid-cols-[auto_1fr_1fr] gap-x-3 text-xs sticky top-0 bg-slate-900 py-1 px-2">
+                          <div class="font-bold text-slate-400">ဂဏန်း</div>
+                          <div class="font-bold text-slate-400 text-right">စုစုပေါင်းထိုးကြေး</div>
+                          <div class="font-bold text-slate-400 text-right">လစ်မစ်ကျော်ငွေ</div>
+                      </div>
+                      @for (cell of suggestion.topNumbers; track cell.number) {
+                          <div class="grid grid-cols-[auto_1fr_1fr] gap-x-3 p-2 font-mono text-xs border-b border-slate-700/50">
+                              <span class="font-bold text-teal-300">{{ cell.number }}</span>
+                              <span class="text-right text-slate-300">{{ cell.amount.toLocaleString() }}</span>
+                              <span class="text-right text-red-400">{{ cell.overLimitAmount.toLocaleString() }}</span>
+                          </div>
+                      }
+                  </div>
+                  <!-- Suggestion and Actions -->
+                  <div class="bg-slate-900/50 p-4 rounded-md flex flex-col justify-center text-center">
+                    <p class="text-sm text-slate-300">
+                      အကြံပြုချက်: Default Limit ကို 
+                      <span class="font-bold text-xl text-yellow-400 mx-1">{{ suggestion.suggestedHoldingIncrease.toLocaleString() }}</span>
+                      တိုးမြှင့်လိုက်ပါက၊ အသားတင်အမြတ်ငွေ
+                      <span class="font-bold text-xl text-green-400 mx-1">{{ suggestion.potentialProfitIncrease.toLocaleString('en-US', { minimumFractionDigits: 0 }) }}</span>
+                      ထပ်မံရရှိနိုင်ပါသည်။
+                    </p>
+                    <p class="text-xs text-slate-500 mt-2">(ဤတွက်ချက်မှုသည် အဆိုပါဂဏန်းများ မပေါက်သည့်အခြေအနေပေါ် မူတည်ပါသည်)</p>
+                    <div class="flex justify-center gap-3 mt-4">
+                      <button (click)="dismissProfitSuggestion()" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-6 rounded transition text-sm">မလုပ်တော့ပါ</button>
+                      <button (click)="applyProfitSuggestion()" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-6 rounded transition text-sm">အကြံပြုချက်ကို အတည်ပြုမည်</button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            } @else {
+              <section class="p-4 bg-slate-800/90 rounded-lg border border-teal-600 no-print flex justify-between items-center">
+                  <p class="text-sm text-teal-300">
+                      Limit များကို အကြံပြုချက်အတိုင်း ပြင်ဆင်ပြီးပါပြီ။ နောက်ထပ်ပြောင်းလဲမှု ပြုလုပ်လိုပါသလား။
+                  </p>
+                  <div>
+                      <button (click)="dismissProfitSuggestion()" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-1.5 px-4 rounded transition text-sm mr-2">မလုပ်တော့ပါ</button>
+                      <button (click)="showSuggestionPanelAgain()" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-1.5 px-4 rounded transition text-sm">ထပ်မံပြင်ဆင်မည်</button>
+                  </div>
+              </section>
+            }
+          }
+
+          <!-- Over Limit Panels -->
+          @if (activeMode() === 'အလယ်ဒိုင်') {
+            @if (forwardableOverLimitNumbers().length > 0) {
+              <section class="p-4 bg-slate-800/90 rounded-lg border border-purple-600 no-print">
+                <div class="flex justify-between items-center mb-3">
+                  <h3 class="text-base font-bold text-purple-300">အပေါ်ဒိုင်သို့ လွှဲရန်စာရင်း (Forwardable)</h3>
+                  <div class="flex items-center gap-2">
+                      <button (click)="isForwardingModalOpen.set(true)" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-1 px-3 rounded transition text-xs">
+                        စီမံခန့်ခွဲရန်
+                      </button>
+                      <button (click)="copyForwardableListAsImage()" [disabled]="isGeneratingImage()" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded transition text-xs flex items-center gap-1">
+                          @if(isGeneratingImage()) {
+                              <svg class="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                          } @else {
+                              <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                          }
+                          Img Copy
+                      </button>
+                      <button (click)="acknowledgeAllForwardableOverLimits()" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded transition text-xs">Copy All</button>
+                  </div>
+                </div>
+                <div class="bg-slate-900/50 p-2 rounded-md max-h-48 overflow-y-auto">
+                    <div class="flex flex-wrap gap-2">
+                      @for (item of forwardableOverLimitNumbers(); track item.number) {
+                        <div class="flex items-center gap-1.5 bg-slate-800/70 py-1 pl-2.5 pr-1 rounded-full text-sm font-mono">
+                          <span class="text-purple-300 font-semibold">{{ item.number }}</span>
+                          <span class="text-white">=</span>
+                          <span class="text-white">{{ item.overLimitAmount.toLocaleString() }}</span>
+                          <button (click)="rejectOverLimit(item.number)" title="ကိုင်မည်" class="w-5 h-5 flex items-center justify-center bg-orange-600/50 hover:bg-orange-600 rounded-full text-white transition leading-none text-base">&times;</button>
+                        </div>
+                      }
+                    </div>
+                </div>
+              </section>
+            }
+              @if (heldOverLimitNumbers().length > 0) {
+              <section class="p-4 bg-slate-800/90 rounded-lg border border-orange-600 no-print">
+                <div class="flex justify-between items-center mb-3">
+                  <h3 class="text-base font-bold text-orange-300">ကိုင်ထားသော ကာသီးစာရင်း (Held)</h3>
+                  <div class="flex items-center gap-2">
+                    <button (click)="copyHeldListAsImage()" [disabled]="isGeneratingImage()" class="bg-orange-600 hover:bg-orange-700 text-white font-bold py-1 px-3 rounded transition text-xs flex items-center gap-1">
+                        @if(isGeneratingImage()) {
+                            <svg class="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        } @else {
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        }
+                        Img Copy
+                    </button>
+                    <button (click)="acknowledgeAllHeldOverLimits()" class="bg-orange-600 hover:bg-orange-700 text-white font-bold py-1 px-3 rounded transition text-xs">အားလုံး Copy ကူးမည်</button>
+                  </div>
+                </div>
+                <div class="bg-slate-900/50 p-2 rounded-md max-h-48 overflow-y-auto">
+                    <div class="flex flex-wrap gap-2">
+                      @for (item of heldOverLimitNumbers(); track item.number) {
+                          <div class="flex items-center gap-1.5 bg-slate-800/70 py-1 pl-2.5 pr-1 rounded-full text-sm font-mono">
+                          <span class="text-orange-300 font-semibold">{{ item.number }}</span>
+                          <span class="text-white">=</span>
+                          <span class="text-white">{{ item.overLimitAmount.toLocaleString() }}</span>
+                          <button (click)="reforwardOverLimit(item.number)" title="ပြန်လွှဲမည်" class="w-5 h-5 flex items-center justify-center bg-purple-600/50 hover:bg-purple-600 rounded-full text-white transition leading-none">↰</button>
+                        </div>
+                      }
+                    </div>
+                </div>
+              </section>
+            }
+          } @else if (activeMode() === 'ဒိုင်ကြီး' && displayedOverLimitNumbers().length > 0) {
+            <section class="p-4 bg-slate-800/90 rounded-lg border border-red-600 no-print">
+              <div class="flex justify-between items-center mb-3">
+                <h3 class="text-base font-bold text-red-300">လစ်မစ်ကျော်စာရင်းများ (Over-Limits)</h3>
+                <button (click)="acknowledgeMainBookieOverLimits()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded transition text-xs">အားလုံး Copy ကူးမည်</button>
+              </div>
+              <div class="bg-slate-900/50 p-2 rounded-md max-h-48 overflow-y-auto">
+                  <div class="flex flex-wrap gap-2">
+                    @for (item of displayedOverLimitNumbers(); track item.number) {
+                      <div class="flex items-center gap-1.5 bg-slate-800/70 py-1 px-2.5 rounded-full text-sm font-mono">
+                        <span class="text-red-300 font-semibold">{{ item.number }}</span>
+                        <span class="text-white">=</span>
+                        <span class="text-white">{{ item.overLimitAmount.toLocaleString() }}</span>
+                      </div>
+                    }
+                  </div>
+              </div>
+            </section>
+          }
+
+           <section class="bg-slate-800/90 rounded-lg p-4 border border-slate-700 no-print">
+                @if(statusMessage()) { <div class="mb-2 p-2 rounded text-center text-sm" [class]="statusMessage().includes('အောင်မြင်') || statusMessage().includes('Copy') ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'">{{ statusMessage() }}</div> }
+                
+                <!-- Risk Warning Banner -->
+                @if(licenseService.isAdmin()) {
+                  @if(worstCaseScenario(); as scenario) {
+                    @if(scenario.isRisk) {
+                        <div class="mb-2 bg-red-900/80 border border-red-500 text-white p-2 rounded flex flex-col gap-1 animate-pulse">
+                            <div class="flex items-center gap-2 border-b border-red-400/50 pb-1 mb-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-300" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                                <span class="font-bold text-yellow-300">လူကြိုက်အများဆုံး ဂဏန်း (Most Popular):</span>
+                                <span class="font-mono text-lg font-black ml-1">[{{ scenario.numbers.join(', ') }}]</span>
+                                <span class="text-xs text-red-200">(Total: {{ scenario.totalAmount.toLocaleString() }})</span>
+                            </div>
+                            <div class="text-sm pl-7">
+                                အကယ်၍ပေါက်ပါက ရှုံးငွေ (Based on Held {{ scenario.heldAmount.toLocaleString() }}): <span class="font-bold text-lg">{{ scenario.projectedNet.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}</span>
+                            </div>
+                        </div>
+                    }
+                  }
+                }
+
+                <div class="flex flex-col gap-2">
+                    <div class="relative">
+                      <textarea #mainBetInput id="main-bet-input" [ngModel]="userInput()" (ngModelChange)="userInput.set($event)" (paste)="handlePaste($event, 'main')" (keydown)="onInputKeydown($event)" placeholder="ဥပမာ: 12r 500, apu 100, nk 50&#10;Enter ဖြင့် စာရင်းထည့်သွင်းပြီး Shift+Enter ဖြင့် လိုင်းဆင်းပါ။" class="w-full h-24 bg-slate-900 border border-slate-600 rounded px-3 py-2 focus:ring-yellow-500 resize-y pr-10"></textarea>
+                      <button (click)="toggleVoiceInput()" 
+                              [class]="voiceService.isListening() ? 'text-red-500 animate-pulse' : 'text-slate-400 hover:text-white'"
+                              class="absolute top-2 right-2 p-1 bg-slate-800/50 rounded-full hover:bg-slate-700 transition" 
+                              title="အသံဖြင့် စာရင်းသွင်းရန် (Microphone)">
+                          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                          </svg>
+                      </button>
+                    </div>
+                    <div class="flex justify-between items-start">
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-2 mt-1">
+                          <button (click)="saveReport()" title="Save Report (Alt + S)" class="bg-green-600/80 hover:bg-green-700 text-white font-bold py-2 px-4 rounded transition">စာရင်းပိတ်ပြီး မှတ်တမ်းတင်မည်</button>
+                          <button (click)="clearAllBets()" title="Clear All (Alt + C)" class="bg-red-600/80 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition">အားလုံးဖျက်</button>
+                          <button (click)="undoLastBet()" title="Undo Last (Alt + Z)" class="bg-orange-500/80 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded transition">နောက်ဆုံးဖျက်</button>
+                        </div>
+                        <button (click)="addBetsFromInput()" class="bg-yellow-500 hover:bg-yellow-600 text-slate-900 font-bold py-2 px-8 rounded transition shadow-md">ထည့်မည်</button>
+                    </div>
+                </div>
+                <!-- Bet History Panel -->
+                @if(recentHistory().length > 0) {
+                  <div class="mt-4 pt-3 border-t border-slate-700">
+                      <h3 class="text-sm font-bold text-slate-400 mb-2">နောက်ဆုံးထည့်သွင်းခဲ့သော စာရင်းများ (20)</h3>
+                      <div #historyContainer class="max-h-32 overflow-y-auto pr-2 space-y-1.5 scroll-smooth">
+                          @for(entry of recentHistory(); track entry.id) {
+                            <div class="flex justify-between items-center bg-slate-900/50 p-1.5 rounded text-sm group animate-fade-in">
+                              <span class="font-mono text-slate-300 truncate" [title]="entry.input">{{ entry.input }}</span>
+                              <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button (click)="editHistoryEntry(entry)" class="text-yellow-400 hover:text-yellow-300 text-xs font-semibold">ပြင်မည်</button>
+                                <button (click)="deleteHistoryEntry(entry.id)" class="text-red-400 hover:text-red-300 text-xs font-semibold">ဖျက်မည်</button>
+                              </div>
+                            </div>
+                          }
+                      </div>
+                  </div>
+                }
+           </section>
+      </div>
+      
+      <div class="flex flex-col gap-4">
+        <!-- Financial Summary -->
+        <section class="bg-slate-800/90 rounded-lg p-4 border border-slate-700 no-print">
+            <h2 class="text-lg font-bold text-yellow-400 mb-3">ဘဏ္ဍာရေး အကျဉ်းချုပ်</h2>
+            <div class="grid grid-cols-2 gap-2 text-sm">
+                <app-summary-card title="စုစုပေါင်းထိုးကြေး" [value]="totalBetAmount().toLocaleString() + ' ' + currencySymbol()" />
+                <app-summary-card title="လစ်မစ်ကျော်" [value]="totalOverLimitAmount().toLocaleString() + ' ' + currencySymbol()" color="text-red-400" />
+                <app-summary-card title="ကိုင်ငွေ" [value]="totalHeldAmount().toLocaleString() + ' ' + currencySymbol()" />
+                <app-summary-card title="ပေးရမည့် ကော်မရှင်" [value]="payableCommissionAmount().toLocaleString('en-US', { minimumFractionDigits: 2 }) + ' ' + currencySymbol()" color="text-orange-400" />
+
+                @if(activeMode() === 'အလယ်ဒိုင်') {
+                  <app-summary-card title="ရမည့် ကော်မရှင်" [value]="receivableCommissionAmount().toLocaleString('en-US', { minimumFractionDigits: 2 }) + ' ' + currencySymbol()" />
+                }
+                
+                <div class="col-span-2">
+                    <div class="bg-slate-900/70 p-3 rounded-lg">
+                      <p class="text-xs text-slate-400">အသားတင် (Net)</p>
+                      <p class="font-mono font-bold text-xl" [class]="netAmount() >= 0 ? 'text-green-400' : 'text-red-400'">
+                        {{ netAmount().toLocaleString('en-US', { minimumFractionDigits: 2 }) }} {{ currencySymbol() }}
+                      </p>
+                    </div>
+                </div>
+
+                @if(licenseService.isAdmin()) {
+                    @if(worstCaseScenario(); as risk) {
+                        <div class="col-span-2 mt-2 pt-2 border-t border-slate-700">
+                            <p class="text-xs text-slate-400 mb-1">Risk အခြေအနေ (Popular & Held)</p>
+                            <div class="bg-slate-900/70 p-2 rounded-lg flex justify-between items-end">
+                                <span class="text-xs text-slate-300">ပေါက်ဂဏန်း: <b class="text-white text-lg ml-1">[{{risk.numbers.join(', ')}}]</b></span>
+                                <span class="font-mono font-bold text-base" [class]="risk.isRisk ? 'text-red-500' : 'text-green-500'">
+                                    {{ risk.projectedNet.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }} {{ currencySymbol() }}
+                                </span>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </section>
+
+        <!-- Agent/Bookie Management & Inbox/Submissions -->
+        <!-- Agent Management Panel -->
+        <section class="bg-slate-800/90 rounded-lg p-4 border border-slate-700 no-print">
+            <h3 class="text-base font-bold text-cyan-400 mb-3">အေးဂျင့်များ စီမံရန်</h3>
+            <div class="flex gap-2 mb-3">
+                <input type="text" [ngModel]="newAgentName()" (ngModelChange)="newAgentName.set($event)" placeholder="Agent အမည်" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm">
+                <input type="number" [ngModel]="newAgentCommission()" (ngModelChange)="newAgentCommission.set(+$event)" class="w-24 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm">
+                <button (click)="addAgent()" class="bg-cyan-600 hover:bg-cyan-700 text-white font-bold px-3 rounded text-sm">+</button>
+            </div>
+            <div class="max-h-32 overflow-y-auto space-y-1 pr-1">
+                @for(agent of agentsWithPerformance(); track agent.name) {
+                    <div class="flex justify-between items-center bg-slate-900/50 p-1.5 rounded text-xs">
+                        <span>{{ agent.name }} ({{ agent.commission }}%)</span>
+                        <div>
+                            <span class="text-green-400 font-mono mr-2">{{ agent.totalSales.toLocaleString() }}</span>
+                            <button (click)="removeAgent(agent.name)" class="text-red-500 hover:text-red-400">&times;</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+
+        <!-- Upper Bookie Management Panel (Middle Bookie only) -->
+        @if (activeMode() === 'အလယ်ဒိုင်') {
+            <section class="bg-slate-800/90 rounded-lg p-4 border border-slate-700 no-print">
+                <h3 class="text-base font-bold text-purple-400 mb-3">အပေါ်ဒိုင်များ စီမံရန်</h3>
+                <div class="flex gap-2 mb-3">
+                    <input type="text" [ngModel]="newUpperBookieName()" (ngModelChange)="newUpperBookieName.set($event)" placeholder="Bookie အမည်" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm">
+                    <input type="number" [ngModel]="newUpperBookieCommission()" (ngModelChange)="newUpperBookieCommission.set(+$event)" class="w-24 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-sm">
+                    <button (click)="addUpperBookie()" class="bg-purple-600 hover:bg-purple-700 text-white font-bold px-3 rounded text-sm">+</button>
+                </div>
+                <div class="max-h-32 overflow-y-auto space-y-1 pr-1">
+                    @for(bookie of upperBookies(); track bookie.name) {
+                        <div class="flex justify-between items-center bg-slate-900/50 p-1.5 rounded text-xs">
+                            <span>{{ bookie.name }} ({{ bookie.commission }}%)</span>
+                            <button (click)="removeUpperBookie(bookie.name)" class="text-red-500 hover:text-red-400">&times;</button>
+                        </div>
+                    }
+                </div>
+            </section>
+        }
+
+        <!-- Inbox Panel -->
+        <section class="bg-slate-800/90 rounded-lg p-4 border border-slate-700 no-print">
+            <h3 class="text-base font-bold text-lime-400 mb-3">Inbox</h3>
+            <select [ngModel]="selectedAgentForInbox()" (ngModelChange)="selectedAgentForInbox.set($event)" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1.5 text-sm mb-2">
+                <option [ngValue]="null" disabled>Agent ကို ရွေးပါ</option>
+                @for(agent of agents(); track agent.name) {
+                    <option [value]="agent.name">{{ agent.name }}</option>
+                }
+            </select>
+            <textarea [ngModel]="inboxInput()" (ngModelChange)="updateInboxInput($event)" (paste)="handlePaste($event, 'inbox')" rows="5" placeholder="Agent မှပို့သောစာရင်းကို ထည့်ပါ..." class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm font-mono"></textarea>
+            <button (click)="addBetsFromInbox()" [disabled]="isInboxSubmitDisabled()" class="w-full mt-2 bg-lime-600 hover:bg-lime-700 text-white font-bold py-2 rounded transition disabled:bg-slate-600">ထည့်မည်</button>
+        </section>
+      </div>
+  </div>
+</div>
+
+<!-- ========================================== -->
+<!-- MODALS / POPUPS SECTION (MUST BE AT BOTTOM) -->
+<!-- ========================================== -->
+
+<!-- Manual Image Copy Modal (Fallback) -->
+@if (showImagePreview()) {
+    <div class="fixed inset-0 bg-black/90 z-[200] flex flex-col items-center justify-center p-4">
+        <div class="bg-white p-4 rounded-lg shadow-2xl flex flex-col items-center gap-4 max-w-4xl max-h-[90vh]">
+            <div class="text-center text-gray-800 mb-2">
+                <h3 class="font-bold text-lg text-red-600">Auto Copy မရရှိပါ (Browser Security)</h3>
+                <p class="text-sm font-semibold">ပုံကို ဖိနှိပ်ပီး "Copy Image" ယူပါ (သို့မဟုတ်) "Download" လုပ်ပါ။</p>
+                <p class="text-xs text-gray-500">(Right click or Long press the image below)</p>
+            </div>
+            
+            <div class="overflow-auto border-2 border-gray-300 rounded max-w-full">
+                <img [src]="previewImageUrl()" alt="Voucher Preview" class="max-w-full h-auto">
+            </div>
+            
+            <div class="flex gap-4 w-full justify-center">
+                <a [href]="previewImageUrl()" download="voucher-image.png" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded text-sm flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    Download Image
+                </a>
+                <button (click)="closeImagePreview()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-6 rounded text-sm">
+                    ပိတ်မည် (Close)
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Hidden Voucher Template for FORWARDABLE Image Capture -->
+<div id="forward-voucher-capture" style="position: absolute; left: -9999px; top: 0; width: 800px; background-color: white; color: black; padding: 20px; font-family: monospace; z-index: -100; border: 2px solid black; position: relative;">
+    
+    <!-- Flexible Header to avoid QR overlap -->
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid black; margin-bottom: 20px; padding-bottom: 10px;">
+        <div style="flex: 1;">
+             <h3 style="margin: 0; font-size: 32px; font-weight: bold;">--- {{ bookieName() }} ---</h3>
+             <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: bold; color: #444;">
+                နေ့စွဲ: {{ imageGenerationTime() || (lotteryType() === '3D' ? formatDate(drawDate()) : (session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း')) }}
+             </p>
+        </div>
+        
+        @if (voucherQrCodeUrl()) {
+          <div style="border: 2px solid black; padding: 4px; background: white; margin-left: 20px;">
+            <img [src]="voucherQrCodeUrl()" alt="QR Code" style="width: 250px; height: 250px;">
+          </div>
+        }
+    </div>
+    
+    <!-- Grid Content (Using Flexbox with Borders) -->
+    <div style="display: flex; flex-wrap: wrap; width: 100%; border-top: 2px solid #000; border-left: 2px solid #000;">
+        @for (item of forwardableOverLimitNumbers(); track item.number) {
+            <!-- Each Cell: 25% Width (4 Cols) -->
+            <div style="width: 25%; box-sizing: border-box; border-right: 2px solid #000; border-bottom: 2px solid #000; padding: 10px 5px; display: flex; justify-content: center; align-items: center;">
+                <span style="font-weight: bold; font-size: 24px; color: #000;">{{ item.number }}</span>
+                <span style="margin: 0 8px; font-weight: bold; font-size: 20px; color: #555;">=</span>
+                <span style="font-weight: bold; font-size: 24px; color: #000;">{{ item.overLimitAmount.toLocaleString() }}</span>
+            </div>
+        }
+    </div>
+
+    <!-- Footer -->
+    <div style="border-top: 2px solid black; margin-top: 20px; padding-top: 10px; display: flex; justify-content: space-between; font-weight: bold; font-size: 24px;">
+        <span>စုစုပေါင်း ({{ forwardableOverLimitNumbers().length }})</span>
+        <span>{{ pendingForwardableAmount().toLocaleString() }} {{ currencySymbol() }}</span>
+    </div>
+</div>
+
+<!-- Hidden Voucher Template for HELD Image Capture -->
+<div id="held-voucher-capture" style="position: absolute; left: -9999px; top: 0; width: 800px; background-color: white; color: black; padding: 20px; font-family: monospace; z-index: -100; border: 2px solid black; position: relative;">
+    
+    <!-- Flexible Header to avoid QR overlap -->
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid black; margin-bottom: 20px; padding-bottom: 10px;">
+        <div style="flex: 1;">
+             <h3 style="margin: 0; font-size: 32px; font-weight: bold;">--- {{ bookieName() }} (Held) ---</h3>
+             <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: bold; color: #444;">
+                နေ့စွဲ: {{ imageGenerationTime() || (lotteryType() === '3D' ? formatDate(drawDate()) : (session() === 'morning' ? 'မနက်ပိုင်း' : 'ညနေပိုင်း')) }}
+             </p>
+        </div>
+        
+        @if (voucherQrCodeUrl()) {
+          <div style="border: 2px solid black; padding: 4px; background: white; margin-left: 20px;">
+            <img [src]="voucherQrCodeUrl()" alt="QR Code" style="width: 250px; height: 250px;">
+          </div>
+        }
+    </div>
+    
+    <!-- Grid Content (Using Flexbox with Borders) -->
+    <div style="display: flex; flex-wrap: wrap; width: 100%; border-top: 2px solid #000; border-left: 2px solid #000;">
+        @for (item of heldOverLimitNumbers(); track item.number) {
+            <!-- Each Cell: 25% Width (4 Cols) -->
+            <div style="width: 25%; box-sizing: border-box; border-right: 2px solid #000; border-bottom: 2px solid #000; padding: 10px 5px; display: flex; justify-content: center; align-items: center;">
+                <span style="font-weight: bold; font-size: 24px; color: #000;">{{ item.number }}</span>
+                <span style="margin: 0 8px; font-weight: bold; font-size: 20px; color: #555;">=</span>
+                <span style="font-weight: bold; font-size: 24px; color: #000;">{{ item.overLimitAmount.toLocaleString() }}</span>
+            </div>
+        }
+    </div>
+
+    <!-- Footer -->
+    <div style="border-top: 2px solid black; margin-top: 20px; padding-top: 10px; display: flex; justify-content: space-between; font-weight: bold; font-size: 24px;">
+        <span>စုစုပေါင်း ({{ heldOverLimitNumbers().length }})</span>
+        <span>{{ totalHeldVoucherAmount().toLocaleString() }} {{ currencySymbol() }}</span>
+    </div>
+</div>
+
+<!-- Chat Modal -->
+@if (showChat()) {
+    <app-chat (close)="showChat.set(false)" (importBets)="handleChatImport($event)" />
+}
+
+<!-- Clear Confirmation Modal -->
+@if (showClearAllConfirmation()) {
+  <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-slate-800 border border-slate-600 rounded-lg shadow-2xl p-6 text-center">
+      <h3 class="text-xl font-bold text-red-500 mb-4">သတိပေးချက်</h3>
+      <p class="text-slate-300 mb-6">လက်ရှိထည့်သွင်းထားသော စာရင်းများအားလုံးကို အမှန်တကယ် ဖျက်လိုပါသလား?</p>
+      <div class="flex justify-center gap-4">
+        <button (click)="showClearAllConfirmation.set(false)" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-6 rounded transition">မလုပ်တော့ပါ</button>
+        <button (click)="confirmClearAll()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded transition">ဖျက်မည်</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Limit Management Modal -->
+@if (showLimitManagementModal()) {
+    <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+        <div class="w-full max-w-sm bg-slate-800 border border-blue-500 rounded-lg shadow-2xl p-6">
+            <h3 class="text-lg font-bold text-blue-400 mb-4">
+                {{ limitManageNumber() ? 'သီးသန့်လစ်မစ် သတ်မှတ်ရန်' : 'Default လစ်မစ် သတ်မှတ်ရန်' }}
+            </h3>
+            
+            <div class="mb-4">
+                <label class="block text-sm text-slate-400 mb-1">ဂဏန်း (Number)</label>
+                <input type="text" [value]="limitManageNumber()" (input)="limitManageNumber.set($any($event.target).value)" 
+                       class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white font-mono"
+                       placeholder="Default Limit အတွက် အလွတ်ထားပါ">
+                @if (limitManageNumber()) {
+                    <p class="text-xs text-slate-500 mt-1">ဥပမာ: 1a, apu, 12r စသည်ဖြင့် အသုတ်လိုက် ထည့်သွင်းနိုင်ပါသည်။</p>
+                }
+            </div>
+            
+            <div class="mb-6">
+                <label class="block text-sm text-slate-400 mb-1">ပမာဏ (Amount)</label>
+                <input type="number" [ngModel]="limitManageAmount()" (ngModelChange)="limitManageAmount.set(+$event)" 
+                       class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white font-mono">
+            </div>
+            
+            <div class="flex justify-end gap-2">
+                <button (click)="closeLimitModal()" class="bg-slate-600 hover:bg-slate-700 text-white text-sm font-bold py-2 px-4 rounded transition">
+                    ပိတ်မည်
+                </button>
+                <button (click)="saveIndividualLimit()" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-2 px-4 rounded transition">
+                    သိမ်းမည်
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Submission / Copy Modal -->
+@if (showSubmissionModal()) {
+  <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-slate-800 border border-lime-600 rounded-lg shadow-2xl p-6 flex flex-col max-h-[90vh]">
+      <h3 class="text-lg font-bold text-lime-400 mb-3">စာရင်းပို့ရန် (Voucher)</h3>
+      <textarea readonly class="flex-grow bg-slate-900 text-slate-200 font-mono text-sm rounded border border-slate-700 p-2 mb-4 resize-none h-64 focus:ring-lime-500">{{ submissionText() }}</textarea>
+      <div class="grid grid-cols-2 gap-3">
+         <button (click)="copySubmissionText()" class="bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 rounded transition text-sm">Copy ယူမည်</button>
+         <button (click)="share(submissionText())" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded transition text-sm">Share လုပ်မည်</button>
+         <button (click)="showSubmissionModal.set(false)" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 rounded transition text-sm">ပိတ်မည်</button>
+         <button (click)="finishBatch()" class="bg-lime-600 hover:bg-lime-700 text-white font-bold py-2 rounded transition text-sm">ပို့ပြီး (Finish)</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Inbox Confirmation Modal -->
+@if (pendingInboxConfirmation()) {
+  <div class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+    <div class="w-full max-w-lg bg-slate-800 border border-orange-500 rounded-lg shadow-2xl p-6">
+      <h3 class="text-lg font-bold text-orange-400 mb-3">သတိပေးချက်: လစ်မစ်ကျော်လွန်နေပါသည်</h3>
+      <p class="text-slate-300 mb-2">အောက်ပါဂဏန်းများသည် သတ်မှတ်လစ်မစ်ထက် ကျော်လွန်နေပါသည်:</p>
+      
+      <div class="bg-slate-900 p-3 rounded border border-slate-700 max-h-40 overflow-y-auto mb-4 font-mono text-red-400 text-sm">
+         {{ overLimitConfirmationText() }}
+      </div>
+
+      <p class="text-sm text-slate-400 mb-4">မည်သို့ လုပ်ဆောင်လိုပါသနည်း?</p>
+      
+      <div class="flex flex-col gap-2">
+         <button (click)="acceptAllFromInbox()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded transition text-sm">
+            အားလုံးအတင်းထည့်မည် (Force Accept All)
+         </button>
+         <button (click)="acceptSafeOnlyFromInbox()" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded transition text-sm">
+            လစ်မစ်ကျော်တာ ပယ်ဖျက်မည် (Reject Over-Limits)
+         </button>
+         <button (click)="cancelInboxConfirmation()" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-3 rounded transition text-sm">
+            မလုပ်တော့ပါ (Cancel)
+         </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Inbox Result / Reply Modal -->
+@if (lastInboxResult()) {
+    <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-slate-800 border border-blue-500 rounded-lg shadow-2xl p-6">
+            <h3 class="text-lg font-bold text-blue-400 mb-3">စာရင်းလက်ခံပြေစာ (Reply Voucher)</h3>
+            <textarea readonly class="w-full h-64 bg-slate-900 text-slate-200 font-mono text-xs rounded border border-slate-700 p-2 mb-4 resize-none">{{ inboxReplyText() }}</textarea>
+            <div class="flex justify-end gap-2">
+                <button (click)="closeInboxResult()" class="bg-slate-600 hover:bg-slate-700 text-white text-sm font-bold py-2 px-4 rounded transition">ပိတ်မည်</button>
+                <button (click)="copyInboxReply()" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-2 px-4 rounded transition">Copy ယူမည်</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Payout Modal -->
+@if (showPayoutModal()) {
+    <div class="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+        <div class="w-full max-w-6xl bg-slate-900 border border-green-700 rounded-lg shadow-2xl p-6 my-8">
+            <div class="flex justify-between items-center mb-6 no-print">
+                <h2 class="text-2xl font-bold text-green-500">ပေါက်ဂဏန်း စာရင်းရှင်းတမ်း</h2>
+                <button (click)="showPayoutModal.set(false)" class="text-slate-400 hover:text-white">&times;</button>
+            </div>
+
+            <div class="mb-6 flex gap-4 items-end no-print">
+                 <div class="flex-grow">
+                     <label class="block text-sm text-slate-400 mb-1">ပေါက်ဂဏန်း (Winning Number)</label>
+                     <input type="text" [ngModel]="winningNumber()" (ngModelChange)="winningNumber.set($event)" 
+                            class="w-full bg-slate-800 border border-slate-600 rounded px-4 py-2 text-xl font-bold text-center tracking-widest text-green-500 focus:ring-green-500"
+                            [attr.maxlength]="lotteryType() === '2D' ? 2 : 3" placeholder="--">
+                 </div>
+                 <button (click)="calculatePayout()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-6 rounded transition h-11">တွက်ချက်မည်</button>
+            </div>
+
+            @if (payoutDetails(); as details) {
+                <!-- MAIN PAYOUT CONTAINER: Dark on Screen, White on Print -->
+                <div class="printable-area bg-slate-900 text-slate-300 p-6 rounded shadow-sm border border-slate-700 print:bg-white print:text-black print:border-none">
+                    <!-- Card Header -->
+                    <div class="text-center mb-4 border-b border-slate-700 pb-4 print:border-gray-300">
+                        <h3 class="text-xl font-bold mb-1 text-yellow-400 print:text-black">{{ bookieName() }} - {{ lotteryType() }} Payout</h3>
+                        <p class="text-xl font-bold">ပေါက်ဂဏန်း: <span class="text-2xl ml-2 text-white print:text-black">{{ details.winningNumber }}</span></p>
+                        <p class="text-xs text-slate-500 mt-1 print:text-gray-500">{{ formatDate(drawDate()) }}</p>
+                    </div>
+
+                    <!-- Summary Grid -->
+                    <div class="flex justify-between items-start text-sm mb-6 pb-4 border-b border-slate-700 print:border-gray-300">
+                         <div class="space-y-1.5">
+                             <p>စုစုပေါင်းထိုးကြေး: <b class="ml-1 text-white print:text-black">{{ details.totalBet.toLocaleString() }}</b></p>
+                             <p>လစ်မစ်ကျော် (ဖယ်): <span class="text-red-400 font-bold ml-1 print:text-red-600">{{ details.totalOverLimitBet.toLocaleString() }}</span></p>
+                             <p>ကိုင်ငွေ (Held): <b class="ml-1 text-blue-400 print:text-blue-600">{{ details.totalHeldBet.toLocaleString() }}</b></p>
+                         </div>
+                         <div class="text-right space-y-1.5">
+                             <p>ပေါက်ကြေး (Rate): <b class="ml-1 text-white print:text-black">{{ payoutRate() }}</b></p>
+                             <p>စုစုပေါင်း လျော်ကြေး: <b class="text-red-400 ml-1 print:text-red-600">{{ details.totalHeldPayout.toLocaleString() }}</b></p>
+                             <p class="pt-1">
+                                 အမြတ်/အရှုံး: 
+                                 <b class="ml-1" [class]="(details.totalHeldBet - details.totalHeldPayout) >= 0 ? 'text-green-400 print:text-green-600' : 'text-red-400 print:text-red-600'">
+                                     {{ (details.totalHeldBet - details.totalHeldPayout).toLocaleString() }}
+                                 </b>
+                             </p>
+                         </div>
+                    </div>
+
+                    <!-- Agent Payout Table -->
+                    @if (details.agentPayouts.length > 0) {
+                        <h4 class="font-bold text-sm mb-3 text-slate-400 print:text-black">Agent စာရင်းရှင်းတမ်း</h4>
+                        <table class="w-full text-xs text-left mb-6">
+                            <thead>
+                                <tr class="border-b border-slate-700 text-slate-400 print:border-gray-300 print:text-gray-600">
+                                    <th class="py-2 font-bold w-40">အမည်</th>
+                                    <th class="py-2 text-right font-bold">ရောင်းရငွေ</th>
+                                    <th class="py-2 text-right font-bold text-gray-500">ကော်မရှင်</th>
+                                    <th class="py-2 text-right font-bold">သွင်းငွေ</th>
+                                    <!-- Detailed Win Columns -->
+                                    <th class="py-2 text-right font-bold text-yellow-500">ပေါက်ငွေ (Total)</th>
+                                    <th class="py-2 text-right font-bold text-red-300">ကာသီး (Cut)</th>
+                                    <th class="py-2 text-right font-bold text-red-500 print:text-red-600">ကိုင်ပေါက် (Held)</th>
+                                    
+                                    <th class="py-2 text-right font-bold">ရှင်းရန်</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @for (agent of details.agentPayouts; track agent.name) {
+                                    <tr class="border-b border-slate-800 hover:bg-slate-800/50 print:border-gray-200 print:hover:bg-transparent">
+                                        <td class="py-2 text-left align-top">
+                                            <div class="font-bold text-slate-300 print:text-black text-sm">{{ agent.name }}</div>
+                                            @if(agent.individualBets.length > 0) {
+                                                <div class="text-[10px] text-gray-400 print:text-gray-600 font-mono mt-1 break-words">
+                                                    ({{ agent.individualBets.join(', ') }})
+                                                </div>
+                                            }
+                                        </td>
+                                        <td class="py-2 text-right align-top text-slate-400 print:text-black">{{ agent.totalSales.toLocaleString() }}</td>
+                                        <td class="py-2 text-right align-top text-slate-500">{{ agent.commissionAmount.toLocaleString() }}</td>
+                                        <td class="py-2 text-right align-top text-slate-400 print:text-black font-semibold">{{ agent.netSales.toLocaleString() }}</td>
+                                        
+                                        <!-- Total Win (Potential) -->
+                                        <td class="py-2 text-right align-top text-yellow-500 print:text-yellow-700">
+                                            <div class="flex flex-col">
+                                                <span class="text-xs text-slate-400">{{ agent.totalWinBetAmount.toLocaleString() }}</span>
+                                                <span class="font-bold">{{ agent.totalWinAmount.toLocaleString() }}</span>
+                                            </div>
+                                        </td>
+                                        
+                                        <!-- Cut/Over Win -->
+                                        <td class="py-2 text-right align-top text-red-300 print:text-gray-500">
+                                            <div class="flex flex-col">
+                                                <span class="text-xs text-slate-500">{{ agent.overLimitWinBetAmount.toLocaleString() }}</span>
+                                                <span>{{ agent.overLimitWinAmount > 0 ? '(' + agent.overLimitWinAmount.toLocaleString() + ')' : '-' }}</span>
+                                            </div>
+                                        </td>
+
+                                        <!-- Actual Held Payout -->
+                                        <td class="py-2 text-right align-top font-bold text-red-500 print:text-red-600 text-sm">
+                                            <div class="flex flex-col">
+                                                <span class="text-xs text-slate-400 font-normal">{{ agent.heldWinBetAmount.toLocaleString() }}</span>
+                                                <span>{{ agent.payout > 0 ? agent.payout.toLocaleString() : '-' }}</span>
+                                            </div>
+                                        </td>
+
+                                        <td class="py-2 text-right align-top font-bold text-base" [class]="agent.finalBalance >= 0 ? 'text-green-400 print:text-green-600' : 'text-red-400 print:text-red-600'">
+                                            {{ agent.finalBalance.toLocaleString() }}
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+
+                    <!-- Other Payouts -->
+                    @if (details.otherPayouts.length > 0) {
+                         <h4 class="font-bold text-sm mb-3 border-b border-slate-700 mt-4 pb-2 text-slate-400 print:text-black print:border-gray-300">အခြား ပေါက်သူများ (Direct Input)</h4>
+                         <table class="w-full text-xs text-left">
+                             <thead>
+                                <tr class="border-b border-slate-700 text-slate-400 print:border-gray-300 print:text-gray-600">
+                                    <th class="py-2 font-bold w-40">အမည်</th>
+                                    <th class="py-2 text-right font-bold">ရောင်းရငွေ</th>
+                                    <th class="py-2 text-right font-bold text-gray-500">ကော်မရှင်</th>
+                                    <th class="py-2 text-right font-bold">သွင်းငွေ</th>
+                                    <!-- Detailed Win Columns -->
+                                    <th class="py-2 text-right font-bold text-yellow-500">ပေါက်ငွေ (Total)</th>
+                                    <th class="py-2 text-right font-bold text-red-300">ကာသီး (Cut)</th>
+                                    <th class="py-2 text-right font-bold text-red-500 print:text-red-600">ကိုင်ပေါက် (Held)</th>
+                                    <th class="py-2 text-right font-bold">ရှင်းရန်</th>
+                                </tr>
+                            </thead>
+                             <tbody>
+                                 @for (p of details.otherPayouts; track p.name) {
+                                     <tr class="border-b border-slate-800 print:border-gray-100 hover:bg-slate-800/50">
+                                         <td class="py-2 align-top">
+                                             <span class="font-bold text-slate-300 print:text-black">{{ p.name }}</span>
+                                             @if(p.individualBets.length > 0) {
+                                                <div class="text-[10px] text-gray-500 font-mono">({{ p.individualBets.join(', ') }})</div>
+                                             }
+                                         </td>
+                                         <!-- Sales Columns (Same Structure as Agent) -->
+                                         <td class="py-2 text-right align-top text-slate-400 print:text-black">{{ p.totalSales.toLocaleString() }}</td>
+                                         <td class="py-2 text-right align-top text-slate-500">-</td> <!-- Usually 0 commission -->
+                                         <td class="py-2 text-right align-top text-slate-400 print:text-black font-semibold">{{ p.netSales.toLocaleString() }}</td>
+
+                                         <!-- Total Win (Potential) -->
+                                         <td class="py-2 text-right align-top text-yellow-500 print:text-yellow-700">
+                                            <div class="flex flex-col">
+                                                <span class="text-xs text-slate-400">{{ p.totalWinBetAmount.toLocaleString() }}</span>
+                                                <span class="font-bold">{{ p.totalWinAmount.toLocaleString() }}</span>
+                                            </div>
+                                        </td>
+
+                                        <!-- Cut/Over Win -->
+                                         <td class="py-2 text-right align-top text-red-300 print:text-gray-500">
+                                            <div class="flex flex-col">
+                                                <span class="text-xs text-slate-500">{{ p.overLimitWinBetAmount.toLocaleString() }}</span>
+                                                <span>{{ p.overLimitWinAmount > 0 ? '(' + p.overLimitWinAmount.toLocaleString() + ')' : '-' }}</span>
+                                            </div>
+                                        </td>
+
+                                        <!-- Actual Held Payout -->
+                                        <td class="py-2 text-right align-top font-bold text-red-500 print:text-red-600 text-sm">
+                                            <div class="flex flex-col">
+                                                <span class="text-xs text-slate-400 font-normal">{{ p.heldWinBetAmount.toLocaleString() }}</span>
+                                                <span>{{ p.payout > 0 ? p.payout.toLocaleString() : '-' }}</span>
+                                            </div>
+                                        </td>
+
+                                        <!-- Balance -->
+                                        <td class="py-2 text-right align-top font-bold text-base" [class]="p.finalBalance >= 0 ? 'text-green-400 print:text-green-600' : 'text-red-400 print:text-red-600'">
+                                            {{ p.finalBalance.toLocaleString() }}
+                                        </td>
+                                     </tr>
+                                 }
+                             </tbody>
+                         </table>
+                    }
+                </div>
+                
+                <div class="mt-6 flex justify-end gap-3 no-print">
+                    <button (click)="printPayout()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded transition text-sm">Print</button>
+                    <button (click)="showPayoutModal.set(false)" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-6 rounded transition text-sm">ပိတ်မည်</button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<!-- Bet Detail Modal -->
+@if (showBetDetailModal()) {
+    <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-slate-800 border border-slate-600 rounded-lg shadow-2xl flex flex-col max-h-[80vh]">
+            <header class="p-4 border-b border-slate-700 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-yellow-400">
+                    နံပါတ် <span class="text-2xl ml-1">{{ selectedNumberForDetail() }}</span> အသေးစိတ်
+                </h3>
+                <button (click)="closeBetDetailModal()" class="text-slate-400 hover:text-white">&times;</button>
+            </header>
+            <div class="flex-grow overflow-y-auto p-4 space-y-2">
+                 @for (bet of betsForDetailModal(); track bet.id) {
+                     <div class="flex justify-between items-center bg-slate-900 p-2 rounded border border-slate-700">
+                         <div class="flex flex-col">
+                             <span class="font-bold text-white">{{ bet.amount.toLocaleString() }}</span>
+                             <span class="text-xs text-slate-500">{{ bet.source }}</span>
+                         </div>
+                         <div class="flex gap-2">
+                             <button (click)="editBetFromDetail(bet)" class="text-yellow-400 hover:text-yellow-300 text-sm">Edit</button>
+                             <button (click)="deleteBetFromDetail(bet)" class="text-red-400 hover:text-red-300 text-sm">Del</button>
+                         </div>
+                     </div>
+                 }
+                 @if (betsForDetailModal().length === 0) {
+                     <p class="text-center text-slate-500">စာရင်းမရှိပါ</p>
+                 }
+            </div>
+        </div>
+    </div>
+}
+
+<!-- POS Voucher Modal -->
+@if (showVoucherModal() && voucherData()) {
+    <div class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-800 p-4 rounded-lg shadow-xl flex flex-col gap-4 max-h-[90vh]">
+            <div class="overflow-y-auto bg-white text-black p-2 shadow-inner w-[300px] mx-auto">
+                <div class="printable-area pos-voucher font-mono leading-tight text-black p-1 bg-white">
+                    <!-- Header -->
+                    <div class="text-center mb-2">
+                        <h3 class="text-base font-bold">{{ voucherData()?.settings?.headerText }}</h3>
+                        <p class="text-[10px]">{{ voucherData()?.date }} {{ voucherData()?.settings?.showDateTime ? voucherData()?.time : '' }}</p>
+                    </div>
+
+                    <!-- Divider -->
+                    <div class="border-b border-dashed border-black mb-1"></div>
+
+                    <!-- List -->
+                    <div class="flex flex-col gap-0.5">
+                        <!-- Header Row -->
+                        <div class="flex justify-between font-bold text-xs mb-1">
+                            <span>No.</span>
+                            <span>Amount</span>
+                        </div>
+
+                        <!-- Items -->
+                        @for (item of voucherData()?.items; track $index) {
+                            <div class="flex items-baseline justify-between text-xs">
+                                <span class="font-bold w-8 text-sm">{{ item.number }}</span>
+                                <!-- Dotted Leader -->
+                                <span class="flex-grow border-b border-dotted border-gray-400 mx-1 mb-1 opacity-50"></span>
+                                <span class="font-bold">{{ item.amount }}</span>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Totals -->
+                    <div class="border-b border-dashed border-black my-2"></div>
+                    <div class="flex justify-between font-bold text-sm">
+                        <span>Total ({{ voucherData()?.totalCount }})</span>
+                        <span>{{ voucherData()?.totalAmount?.toLocaleString() }}</span>
+                    </div>
+                    <div class="border-b border-dashed border-black my-2"></div>
+                    
+                    <div class="text-center text-[10px] mt-2">
+                        {{ voucherData()?.settings?.footerText }}
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-center gap-2 no-print">
+                <button (click)="printVoucher()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded text-sm">Print</button>
+                <button (click)="closeVoucherModal()" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-6 rounded text-sm">ပိတ်မည်</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Voucher Settings Modal -->
+@if (showVoucherSettings()) {
+    <div class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+        <div class="w-full max-w-sm bg-slate-800 border border-slate-600 rounded-lg shadow-2xl p-6">
+            <h3 class="text-lg font-bold text-white mb-4">ဘောင်ချာ ဆက်တင်များ</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm text-slate-400">ခေါင်းစဉ် (Header)</label>
+                    <input type="text" [value]="voucherSettings().headerText" (input)="voucherSettings().headerText = $any($event.target).value" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm text-slate-400">အောက်ဆုံးစာသား (Footer)</label>
+                    <input type="text" [value]="voucherSettings().footerText" (input)="voucherSettings().footerText = $any($event.target).value" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white text-sm">
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="showTime" [checked]="voucherSettings().showDateTime" (change)="voucherSettings().showDateTime = $any($event.target).checked">
+                    <label for="showTime" class="text-sm text-slate-300">အချိန်ထည့်သွင်းမည်</label>
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end gap-2">
+                <button (click)="showVoucherSettings.set(false)" class="bg-slate-600 text-white py-1.5 px-4 rounded text-sm">Cancel</button>
+                <button (click)="saveVoucherSettings()" class="bg-blue-600 text-white py-1.5 px-4 rounded text-sm">Save</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Risk Analysis Modal -->
+@if (showRiskModal()) {
+    <div class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="w-full max-w-5xl h-[85vh] bg-slate-900 border border-rose-600 rounded-lg shadow-2xl flex flex-col">
+            <header class="p-4 border-b border-slate-700 flex justify-between items-center">
+                <h2 class="text-xl font-bold text-rose-400">Risk Analysis (အရှုံး/အမြတ် ခန့်မှန်းချက်)</h2>
+                <button (click)="showRiskModal.set(false)" class="text-slate-400 hover:text-white text-2xl">&times;</button>
+            </header>
+            
+            <div class="p-4 bg-slate-800/50 border-b border-slate-700">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                   <div>
+                       <p class="text-slate-400">အကယ်၍ ဤဂဏန်းပေါက်ခဲ့လျှင် အဆိုးရွားဆုံး ရှုံးနိုင်ချေ (Top 15)</p>
+                   </div>
+                   <div class="text-right">
+                       <p>လက်ရှိ ကိုင်ငွေ: <span class="text-blue-300 font-bold">{{ totalHeldAmount().toLocaleString() }}</span></p>
+                   </div>
+                </div>
+            </div>
+
+            <div class="flex-grow overflow-auto p-4">
+                <table class="w-full text-sm text-left border-collapse">
+                    <thead class="bg-slate-800 text-slate-300 sticky top-0">
+                        <tr>
+                            <th class="p-3 border-b border-slate-700">ဂဏန်း</th>
+                            <th class="p-3 border-b border-slate-700 text-right">Total Bet</th>
+                            <th class="p-3 border-b border-slate-700 text-right">ကိုင်ငွေ (Held)</th>
+                            <th class="p-3 border-b border-slate-700 text-right">လျော်ကြေး ({{ payoutRate() }})</th>
+                            <th class="p-3 border-b border-slate-700 text-right">အသားတင် (Net P/L)</th>
+                            <th class="p-3 border-b border-slate-700 w-20">Risk</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-700">
+                        @for(risk of riskAnalysis(); track risk.number) {
+                            <tr class="hover:bg-slate-800/50" [class.bg-red-900/30]="risk.isMaxTotalBet">
+                                <td class="p-3 font-mono font-bold text-lg" [class.text-red-400]="risk.isMaxTotalBet" [class.text-white]="!risk.isMaxTotalBet">{{ risk.number }}</td>
+                                <td class="p-3 text-right font-mono" [class.text-red-400]="risk.isMaxTotalBet" [class.font-bold]="risk.isMaxTotalBet" [class.text-slate-400]="!risk.isMaxTotalBet">
+                                    {{ risk.totalAmount.toLocaleString() }}
+                                </td>
+                                <td class="p-3 text-right font-mono text-blue-300">{{ risk.totalHeld.toLocaleString() }}</td>
+                                <td class="p-3 text-right font-mono text-rose-400">{{ risk.estimatedPayout.toLocaleString() }}</td>
+                                <td class="p-3 text-right font-mono font-bold" [class]="risk.netProfitLoss >= 0 ? 'text-green-400' : 'text-red-500'">
+                                    {{ risk.netProfitLoss.toLocaleString() }}
+                                </td>
+                                <td class="p-3 text-center">
+                                    @if(risk.netProfitLoss < 0) {
+                                        <span class="inline-block w-3 h-3 rounded-full bg-red-500 animate-pulse"></span>
+                                    } @else {
+                                        <span class="inline-block w-3 h-3 rounded-full bg-green-500"></span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- External Components -->
+@if (showReports()) {
+    <app-report-viewer (close)="showReports.set(false)" (restore)="handleReportRestore($event)" />
+}
+
+@if (showUserGuide()) {
+    <app-user-guide (close)="showUserGuide.set(false)" />
+}
+
+@if (isForwardingModalOpen()) {
+    <app-forwarding-modal 
+        [overLimitNumbers]="forwardableNumbersForModal()"
+        [upperBookies]="upperBookies()"
+        [bookieName]="bookieName()"
+        [session]="session()"
+        [drawDate]="drawDate()"
+        [lotteryType]="lotteryType()"
+        [currencySymbol]="currencySymbol()"
+        (close)="handleForwardingModalClose($event)" />
+}

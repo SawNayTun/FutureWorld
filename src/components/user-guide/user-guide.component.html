@@ -1,0 +1,183 @@
+<div class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <div class="w-full h-full max-w-4xl max-h-[90vh] bg-slate-800 border border-slate-600 rounded-lg shadow-2xl flex flex-col relative">
+    
+    <header class="flex justify-between items-center p-4 border-b border-slate-700 no-print">
+      <h2 class="text-2xl font-bold text-yellow-400">အသုံးပြုသူ လမ်းညွှန်</h2>
+      <button (click)="closePanel()" class="text-slate-400 hover:text-white transition-colors" title="Close Panel">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </header>
+
+    <main class="flex-grow p-6 overflow-y-auto space-y-8 text-slate-300">
+      
+      <section>
+        <h3 class="text-xl font-bold text-yellow-300 mb-2">မိတ်ဆက်</h3>
+        <p>ဤဆော့ဖ်ဝဲလ်သည် ၂လုံးထီ ဒိုင်များနှင့် အလယ်ဒိုင်များအတွက် စာရင်းများကို လွယ်ကူတိကျစွာ စီမံခန့်ခွဲနိုင်ရန် ဖန်တီးထားပါသည်။ Mode (၂) မျိုးဖြင့် သင့်လုပ်ငန်းလိုအပ်ချက်အလိုက် အသုံးပြုနိုင်ပါသည်။</p>
+        <p class="mt-2 text-sm text-slate-400">လုံခြုံရေးအတွက်၊ သင်သည် application ကိုပိတ်လိုက်တိုင်း (ဥပမာ- browser tab ကိုပိတ်ခြင်း) အလိုအလျောက်ထွက်သွားမည်ဖြစ်ပြီး နောက်တစ်ကြိမ်အသုံးပြုသည့်အခါ လိုင်စင်ကီး/စကားဝှက်ဖြင့် ပြန်လည်ဝင်ရောက်ရန် လိုအပ်ပါသည်။</p>
+      </section>
+
+      <section>
+        <h3 class="text-xl font-bold text-yellow-300 mb-3">အထွေထွေ ဆက်တင်များ</h3>
+        <ul class="list-disc list-inside space-y-1 text-sm">
+          <li><strong>ငွေကြေး သတ်မှတ်ခြင်း:</strong> ပင်မစာမျက်နှာ၏ ဘယ်ဘက်ခြမ်းရှိ ဆက်တင်များတွင် သင်အသုံးပြုလိုသော ငွေကြေး (ကျပ်/ဘတ်/ယွမ်) ကို ရွေးချယ်နိုင်ပါသည်။ ရွေးချယ်လိုက်သော ငွေကြေးသည် app တစ်ခုလုံးရှိ ငွေကြေးပြသမှုများတွင် သက်ရောက်မည်ဖြစ်သည်။</li>
+          <li><strong>Heatmap ကြည့်ရှုခြင်း:</strong> "Heatmap ဖွင့်" ခလုတ်ကို နှိပ်၍ ဂဏန်းများ၏ အရောင်းအနေအထားကို အရောင်ဖြင့် ခွဲခြားကြည့်ရှုနိုင်ပါသည်။ (အစိမ်း = နည်း၊ အဝါ = သင့်တင့်၊ လိမ်မော် = များ၊ အနီ = လစ်မစ်ကျော်)။</li>
+        </ul>
+      </section>
+      
+      <section>
+        <h3 class="text-xl font-bold text-yellow-300 mb-3">Mode အလိုက် အသုံးပြုပုံ</h3>
+        <div class="space-y-4">
+          <!-- Middle Bookie Guide -->
+          <div class="p-4 bg-slate-900/50 rounded-lg border border-slate-700">
+            <h4 class="text-lg font-semibold text-blue-400 mb-2">၁။ အလယ်ဒိုင် (Middle Bookie)</h4>
+            <ul class="list-disc list-inside space-y-1 text-sm">
+              <li><strong>စီမံခန့်ခွဲမှု:</strong> ညာဘက်ခြမ်းရှိ "အေးဂျင့်များ စီမံရန်" နှင့် "အပေါ်ဒိုင်များ စီမံရန်" အကွက်များတွင် သင်၏လက်အောက်ခံ အေးဂျင့်များနှင့် သင်ကာသီးလွှဲရမည့် အပေါ်ဒိုင်များကို ၎င်းတို့၏ ကော်မရှင်များနှင့်တကွ ထည့်သွင်းပါ။</li>
+              <li><strong>Default လစ်မစ်:</strong> ဂဏန်းတစ်ခုချင်းစီအတွက် သင်အများဆုံးကိုင်မည့် ပမာဏကို သတ်မှတ်ပါ။</li>
+              <li><strong>Inbox မှ စာရင်းလက်ခံခြင်း:</strong> ညာဘက်ခြမ်း "Inbox" တွင် လက်ခံရရှိသော စာရင်းများကို Paste ချပါ၊ သက်ဆိုင်ရာ Agent ကိုရွေးချယ်ပြီး "ထည့်မည်" ကိုနှိပ်ပါ။</li>
+              <li><strong>Inbox အသုံးပြုနည်း (အမြန်):</strong> Agent စာရင်းများထည့်သွင်းရာတွင်၊ စာရင်း၏ ပထမဆုံးစာကြောင်း၌ `Agent Name:` ဟု ရိုက်ထည့်ပြီး စာရင်းထည့်ပါက သက်ဆိုင်ရာ Agent ကို အလိုအလျောက် ရွေးချယ်ပေးမည်ဖြစ်ပြီး dropdown မှ ရွေးရန်မလိုတော့ပါ။ ဥပမာ: `Maung Maung:\n12r 1000\n...`</li>
+              <li><strong>ကာသီး:</strong> သင်၏ Default Limit ကိုကျော်လွန်သွားသော ထိုးကြေးများကို "ကာသီး" အဖြစ် သတ်မှတ်ပြီး ဇယားတွင်ပြသပေးပါမည်။ "ကာသီးစာရင်းများ စီမံရန်" ခလုတ်ဖြင့် အပေါ်ဒိုင်များထံသို့ စာရင်းများကို အလွယ်တကူ ခွဲဝေส่งต่อနိုင်ပါသည်။</li>
+              <li><strong>ဘဏ္ဍာရေး:</strong> သင်၏ ကိုင်ငွေ၊ ကာသီး၊ ပေးရမည့်/ရမည့် ကော်မရှင်များနှင့် အသားတင်အမြတ်ကို ညာဘက်ခြမ်း "ဘဏ္ဍာရေး အကျဉ်းချုပ်" တွင် အချိန်နှင့်တပြေးညီ ကြည့်ရှုနိုင်ပါသည်။</li>
+            </ul>
+          </div>
+          <!-- Main Bookie Guide -->
+          <div class="p-4 bg-slate-900/50 rounded-lg border border-slate-700">
+            <h4 class="text-lg font-semibold text-blue-400 mb-2">၂။ ဒိုင်ကြီး (Main Bookie)</h4>
+            <ul class="list-disc list-inside space-y-1 text-sm">
+               <li><strong>အေးဂျင့် စီမံခန့်ခွဲမှု:</strong> "အလယ်ဒိုင်" ကဲ့သို့ပင် သင်၏ လက်အောက်ခံအေးဂျင့်များကို စီမံပါ။</li>
+               <li><strong>Default & Individual Limit:</strong> Default Limit အပြင်၊ ဂဏန်းတစ်ခုချင်းစီကို သီးသန့် Limit သတ်မှတ်လိုပါက ပင်မဇယားရှိ မည်သည့်ဂဏန်းကိုမဆို Click နှိပ်၍ သတ်မှတ်နိုင်ပါသည်။</li>
+               <li><strong>Risk Management:</strong> "Risk စစ်ဆေးမည်" ခလုတ်ကို နှိပ်၍ ထိုးကြေးအများဆုံး ဂဏန်းများနှင့် အကယ်၍ပေါက်ခဲ့ပါက ရှုံးနိုင်မည့်ပမာဏများကို ကြည့်ရှုနိုင်ပါသည်။</li>
+               <li><strong>စာရင်းရှင်းခြင်း:</strong> ညာဘက်အပေါ်ထောင့်ရှိ "ပေါက်ဂဏန်း စာရင်းရှင်းရန်" ခလုတ်ကိုနှိပ်၍ ပေါက်ဂဏန်းထည့်သွင်းပြီး လျော်ကြေးငွေ စာရင်းကို အလွယ်တကူ တွက်ချက်နိုင်ပါသည်။</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h3 class="text-xl font-bold text-yellow-300 mb-3">အသံစနစ် (Voice Input)</h3>
+        <p class="text-sm mb-2">စာရင်းသွင်းသည့်အကွက်ရှိ မိုက်ကရိုဖုန်းပုံစံ ခလုတ်ကိုနှိပ်၍ အသံဖြင့် စာရင်းသွင်းနိုင်ပါသည်။</p>
+        <ul class="list-disc list-inside space-y-1 text-sm">
+            <li><strong>ဂဏန်းများ:</strong> မြန်မာလို (တစ်၊ နှစ်၊ သုံး) သို့မဟုတ် အင်္ဂလိပ်လို (One, Two, Three) ပြောဆိုနိုင်ပါသည်။</li>
+            <li><strong>အခေါ်အဝေါ်များ:</strong> အပူး၊ နက္ခတ်၊ ပါဝါ၊ ခွေ၊ အာ (R) စသည့် အခေါ်အဝေါ်များကို အသံဖြင့် ပြောဆိုနိုင်ပါသည်။</li>
+            <li><strong>Command များ:</strong> "ပြန်ဖျက်" (Cancel)၊ "ထည့်မယ်" (Save) ဟုပြော၍ ခလုတ်နှိပ်စရာမလိုဘဲ လုပ်ဆောင်နိုင်ပါသည်။</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3 class="text-xl font-bold text-yellow-300 mb-3">၂လုံး အခေါ်အဝေါ်များ အသုံးပြုပုံ</h3>
+        <p class="text-sm mb-3">စာရင်းများကို မြန်မာလို (`အပူး`)၊ အင်္ဂလိပ်လို (`apu`) သို့မဟုတ် နှစ်မျိုးရော၍ ရိုက်ထည့်နိုင်ပါသည်။</p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm text-left border-collapse">
+            <thead class="bg-slate-700/50">
+              <tr>
+                <th class="p-2 border border-slate-600">အခေါ်အဝေါ်</th>
+                <th class="p-2 border border-slate-600">ဥပမာ</th>
+                <th class="p-2 border border-slate-600">အဓိပ္ပါယ်</th>
+              </tr>
+            </thead>
+            <tbody class="bg-slate-900/50">
+              <tr><td class="p-2 border border-slate-600">ရိုးရိုးထိုးခြင်း</td><td class="p-2 border border-slate-600 font-mono">25 100</td><td class="p-2 border border-slate-600">25 ဂဏန်းကို 100 ကျပ်ဖိုး</td></tr>
+              <tr><td class="p-2 border border-slate-600">R (အပြန်)</td><td class="p-2 border border-slate-600 font-mono">25r 200</td><td class="p-2 border border-slate-600">25 ကို 100, 52 ကို 100</td></tr>
+              <tr><td class="p-2 border border-slate-600">အပူး / apu</td><td class="p-2 border border-slate-600 font-mono">apu 100</td><td class="p-2 border border-slate-600">00, 11, ... 99 အထိ ဂဏန်းတစ်ခုစီကို 100 ဖိုး</td></tr>
+              <tr><td class="p-2 border border-slate-600">ညီကို / nk</td><td class="p-2 border border-slate-600 font-mono">nk 100</td><td class="p-2 border border-slate-600">01, 12, 23 ... 90 နှင့် ၎င်းတို့၏ အပြန်ဂဏန်းများ</td></tr>
+              <tr><td class="p-2 border border-slate-600">ပါဝါ / pao</td><td class="p-2 border border-slate-600 font-mono">pao 100</td><td class="p-2 border border-slate-600">05, 16, 27, 38, 49 နှင့် ၎င်းတို့၏ အပြန်ဂဏန်းများ</td></tr>
+              <tr><td class="p-2 border border-slate-600">နက္ခတ် / nat</td><td class="p-2 border border-slate-600 font-mono">nat 100</td><td class="p-2 border border-slate-600">07, 18, 35, 69, 24 နှင့် ၎င်းတို့၏ အပြန်ဂဏန်းများ</td></tr>
+              <tr><td class="p-2 border border-slate-600">ထိပ် / t</td><td class="p-2 border border-slate-600 font-mono">1t 100</td><td class="p-2 border border-slate-600">1 ထိပ်စီး (10 မှ 19 ထိ) ဂဏန်းများ</td></tr>
+              <tr><td class="p-2 border border-slate-600">ပိတ် / p</td><td class="p-2 border border-slate-600 font-mono">1p 100</td><td class="p-2 border border-slate-600">1 နောက်ပိတ် (01, 11, 21 ... 91) ဂဏန်းများ</td></tr>
+              <tr><td class="p-2 border border-slate-600">ခွေ / k</td><td class="p-2 border border-slate-600 font-mono">12k 100</td><td class="p-2 border border-slate-600">1 နှင့် 2 ဂဏန်းများဖြင့် ခွေခြင်း (11, 12, 21, 22)</td></tr>
+              <tr><td class="p-2 border border-slate-600">အပါ / a</td><td class="p-2 border border-slate-600 font-mono">1a 100</td><td class="p-2 border border-slate-600">1 ဂဏန်းပါသော ဂဏန်းအားလုံး (01, 10-19, 21...)</td></tr>
+              <tr><td class="p-2 border border-slate-600">ဗြိတ် / v / b</td><td class="p-2 border border-slate-600 font-mono">1v 100</td><td class="p-2 border border-slate-600">နှစ်လုံးပေါင်း 1 သို့မဟုတ် 11 ရသောဂဏန်းများ (10, 29, 38...)</td></tr>
+              <tr><td class="p-2 border border-slate-600">စုံစုံ / ss</td><td class="p-2 border border-slate-600 font-mono">ss 100</td><td class="p-2 border border-slate-600">စုံဂဏန်းနှစ်လုံးတွဲများ (02, 24, 68...)</td></tr>
+              <tr><td class="p-2 border border-slate-600">မမ / mm</td><td class="p-2 border border-slate-600 font-mono">mm 100</td><td class="p-2 border border-slate-600">မဂဏန်းနှစ်လုံးတွဲများ (13, 35, 79...)</td></tr>
+              <tr><td class="p-2 border border-slate-600">စုံမ / sm</td><td class="p-2 border border-slate-600 font-mono">sm 100</td><td class="p-2 border border-slate-600">ရှေ့စုံ နောက်မ ဂဏန်းများ (01, 23, 45...)</td></tr>
+              <tr><td class="p-2 border border-slate-600">မစုံ / ms</td><td class="p-2 border border-slate-600 font-mono">ms 100</td><td class="p-2 border border-slate-600">ရှေ့မ နောက်စုံ ဂဏန်းများ (10, 32, 54...)</td></tr>
+              <tr><td class="p-2 border border-slate-600">ဆယ်ပြည့် / sp</td><td class="p-2 border border-slate-600 font-mono">sp 100</td><td class="p-2 border border-slate-600">နှစ်လုံးပေါင်း ၁၀ ရသော ဂဏန်းများနှင့် အပြန်များ (19, 28, 37...)</td></tr>
+              <tr><td class="p-2 border border-slate-600">ဘူ / bb</td><td class="p-2 border border-slate-600 font-mono">bb 100</td><td class="p-2 border border-slate-600">နှစ်လုံးပေါင်း ၀ သို့ ၁၀ ပြည့်သော ဂဏန်းများ (00, 19, 28...)</td></tr>
+              <tr><td class="p-2 border border-slate-600">အကပ် / ak</td><td class="p-2 border border-slate-600 font-mono">1ak 100</td><td class="p-2 border border-slate-600">1 ၏ ဘေးချင်းကပ် (0 နှင့် 2) နှင့်တွဲခြင်း (10, 12, 01, 21)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h3 class="text-xl font-bold text-teal-400 mb-3">၃လုံး (3D) အတိုကောက်များ</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm text-left border-collapse">
+            <thead class="bg-slate-700/50">
+              <tr>
+                <th class="p-2 border border-slate-600">အတိုကောက်</th>
+                <th class="p-2 border border-slate-600">ဥပမာ</th>
+                <th class="p-2 border border-slate-600">အဓိပ္ပါယ်</th>
+              </tr>
+            </thead>
+            <tbody class="bg-slate-900/50">
+              <tr><td class="p-2 border border-slate-600 font-bold text-teal-300">r</td><td class="p-2 border border-slate-600 font-mono">123r 100</td><td class="p-2 border border-slate-600">အာ (ပတ်လည်)။ `123r 100` ဆိုလျှင် ၆ ကွက်စလုံးကို တစ်ကွက် ၁၀၀ ကျပ်စီ ထိုးခြင်း (စုစုပေါင်း ၆၀၀ ကျပ်)။</td></tr>
+              <tr><td class="p-2 border border-slate-600 font-bold text-teal-300">a</td><td class="p-2 border border-slate-600 font-mono">5a 100</td><td class="p-2 border border-slate-600">အပါ (A-par)။ 5 ပါသော ဂဏန်းအားလုံး (271 ကွက်)၊ တစ်ကွက် ၁၀၀ ကျပ်စီ။</td></tr>
+              <tr><td class="p-2 border border-slate-600 font-bold text-teal-300">k</td><td class="p-2 border border-slate-600 font-mono">123k 100</td><td class="p-2 border border-slate-600">ခွေ (Khway)။ 1, 2, 3 ဂဏန်းများဖြင့် ခွေခြင်း (၂၇ ကွက်)၊ တစ်ကွက် ၁၀၀ ကျပ်စီ။</td></tr>
+              <tr><td class="p-2 border border-slate-600 font-bold text-teal-300">t</td><td class="p-2 border border-slate-600 font-mono">1t 100</td><td class="p-2 border border-slate-600">ထိပ် (Hteik)။ 1 ထိပ်စီး (100 မှ 199 ထိ) ဂဏန်းများ၊ တစ်ကွက် ၁၀၀ ကျပ်စီ။</td></tr>
+              <tr><td class="p-2 border border-slate-600 font-bold text-teal-300">p</td><td class="p-2 border border-slate-600 font-mono">1p 100</td><td class="p-2 border border-slate-600">ပိတ် (Peik)။ 1 နောက်ပိတ် (001, 011, ... 991) ဂဏန်းများ၊ တစ်ကွက် ၁၀၀ ကျပ်စီ။</td></tr>
+              <tr><td class="p-2 border border-slate-600 font-bold text-teal-300">b / v</td><td class="p-2 border border-slate-600 font-mono">5b 100</td><td class="p-2 border border-slate-600">ဘရိတ် (Brake)။ သုံးလုံးပေါင်းခြင်း အစွန်းထွက် 5 ရသော ဂဏန်းများ၊ တစ်ကွက် ၁၀၀ ကျပ်စီ။</td></tr>
+              <tr><td class="p-2 border border-slate-600 font-bold text-teal-300">apu</td><td class="p-2 border border-slate-600 font-mono">apu 100</td><td class="p-2 border border-slate-600">သုံးလုံးပူး (000, 111, ... 999) ၁၀ ကွက်၊ တစ်ကွက် ၁၀၀ ကျပ်စီ။</td></tr>
+              <tr><td class="p-2 border border-slate-600 font-bold text-teal-300">xtyp</td><td class="p-2 border border-slate-600 font-mono">1t5p 100</td><td class="p-2 border border-slate-600">ထိပ်ပိတ် (Hteik-Peik)။ 1 ထိပ်၊ 5 ပိတ် (105, 115...195) ၁၀ ကွက်၊ တစ်ကွက် ၁၀၀ ကျပ်စီ။</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h3 class="text-xl font-bold text-yellow-300 mb-2">စာရင်းသွင်းခြင်းနှင့် Shortcuts</h3>
+        <ul class="list-disc list-inside space-y-2 text-sm">
+          <li><strong>Enter ဖြင့် စာရင်းထည့်သွင်းခြင်း:</strong> စာရင်းသွင်းအကွက်တွင် စာရင်းရိုက်ပြီး `Enter` ခေါက်လိုက်သည်နှင့် "ထည့်မည်" ခလုတ်ကို နှိပ်စရာမလိုဘဲ စာရင်းကို ဇယားထဲသို့ တိုက်ရိုက်ထည့်သွင်းပေးပါမည်။</li>
+          <li><strong>Shift + Enter ဖြင့် လိုင်းဆင်းခြင်း:</strong> စာရင်းသွင်းအကွက်ထဲတွင် လိုင်းအသစ်ဆင်းလိုပါက `Shift` key နှင့် `Enter` key ကို တွဲနှိပ်ပါ။</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3 class="text-xl font-bold text-yellow-300 mb-3">Keyboard Shortcuts</h3>
+        <p class="text-sm mb-3">Modal များပွင့်မနေသည့်အချိန်နှင့် စာရိုက်သည့်အကွက်များတွင် focus မရှိသည့်အချိန်တွင် အောက်ပါ shortcuts များကို အသုံးပြုနိုင်ပါသည်။</p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm text-left border-collapse">
+            <thead class="bg-slate-700/50">
+              <tr>
+                <th class="p-2 border border-slate-600">Shortcut</th>
+                <th class="p-2 border border-slate-600">လုပ်ဆောင်ချက်</th>
+              </tr>
+            </thead>
+            <tbody class="bg-slate-900/50">
+              <tr><td class="p-2 border border-slate-600 font-mono">Alt + C</td><td class="p-2 border border-slate-600">အားလုံးဖျက် (Clear All Bets)</td></tr>
+              <tr><td class="p-2 border border-slate-600 font-mono">Alt + Z</td><td class="p-2 border border-slate-600">နောက်ဆုံးစာရင်းဖျက် (Undo Last Bet)</td></tr>
+              <tr><td class="p-2 border border-slate-600 font-mono">Alt + S</td><td class="p-2 border border-slate-600">စာရင်းပိတ်ပြီး မှတ်တမ်းတင်မည် (Save Report)</td></tr>
+              <tr><td class="p-2 border border-slate-600 font-mono">Alt + M</td><td class="p-2 border border-slate-600">မနက်/ညနေ ပြောင်းမည် (Toggle Session)</td></tr>
+              <tr><td class="p-2 border border-slate-600 font-mono">Alt + 1 / 2</td><td class="p-2 border border-slate-600">Middle/Main Mode ပြောင်းမည်</td></tr>
+              <tr><td class="p-2 border border-slate-600 font-mono">Alt + B</td><td class="p-2 border border-slate-600">Backup လုပ်မည်</td></tr>
+              <tr><td class="p-2 border border-slate-600 font-mono">Alt + R</td><td class="p-2 border border-slate-600">Restore လုပ်ရန် ဖိုင်ရွေးမည်</td></tr>
+              <tr><td class="p-2 border border-slate-600 font-mono">Alt + P</td><td class="p-2 border border-slate-600">ပေါက်ဂဏန်း စာရင်းရှင်းရန် panel ဖွင့်မည် (For Bookies)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      @if(licenseService.isAdmin()) {
+        <section class="p-4 bg-indigo-900/40 rounded-lg border border-indigo-700">
+          <h3 class="text-xl font-bold text-indigo-300 mb-3">အက်ဒမင်အတွက် လမ်းညွှန်</h3>
+          <div class="space-y-4 text-sm">
+              <div>
+                <h4 class="font-semibold text-indigo-400">လိုင်စင်ထုတ်ပေးခြင်း</h4>
+                <p>အသုံးပြုသူအသစ်အတွက် လိုင်စင်ထုတ်ပေးလိုပါက "Admin Panel" သို့သွားပါ။ "လိုင်စင်ထုတ်ရန်" အပိုင်းတွင် အသုံးပြုသူ၏အမည်၊ သူထံမှရရှိသော `device-id.future2d` ဖိုင်ကိုတင်၍ Device ID နှင့် သက်တမ်းကုန်ဆုံးမည့်ရက်တို့ကို ဖြည့်စွက်ပြီး လိုင်စင်ထုတ်ပေးနိုင်ပါသည်။ ထုတ်လုပ်ပြီး လိုင်စင်ကီးကို အသုံးပြုသူထံသို့ ပေးပို့ပါ။</p>
+              </div>
+              <div>
+                <h4 class="font-semibold text-indigo-400">အသုံးပြုသူ စီမံခန့်ခွဲမှု</h4>
+                <p>Admin Panel ၏ ညာဘက်ခြမ်းတွင် သင်ထုတ်ပေးထားသော အသုံးပြုသူများ၏ စာရင်းကို ကြည့်ရှုနိုင်ပါသည်။ လိုင်စင်ကီးများ Copy ကူးခြင်း၊ အသုံးပြုသူများကို ဖျက်ခြင်းများ ပြုလုပ်နိုင်ပါသည်။</p>
+              </div>
+              <div>
+                <h4 class="font-semibold text-indigo-400">မာစတာကီး (စကားဝှက်) ပြောင်းလဲခြင်း</h4>
+                <p>သင်၏ Admin Account သို့ Login ဝင်သော စကားဝှက်ကို "မာစတာကီး ပြောင်းရန်" အပိုင်းတွင် ပြောင်းလဲနိုင်ပါသည်။ လုံခြုံရေးအတွက် ပုံမှန်ပြောင်းလဲပေးသင့်ပါသည်။</p>
+              </div>
+          </div>
+        </section>
+      }
+    </main>
+
+  </div>
+</div>

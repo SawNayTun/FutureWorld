@@ -1,0 +1,9 @@
+.bet-item {
+  @apply bg-slate-800 p-2 rounded-md flex items-center justify-between gap-3 cursor-grab transition-shadow;
+}
+.bet-item:hover {
+  @apply shadow-lg shadow-slate-950/50;
+}
+.bet-item:active {
+    @apply cursor-grabbing bg-slate-700;
+}

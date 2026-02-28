@@ -1,0 +1,68 @@
+<div class="flex items-center justify-center min-h-screen">
+  <div class="w-full max-w-md p-8 space-y-6 bg-slate-800/90 rounded-lg shadow-xl border border-slate-700">
+    <div class="text-center">
+      <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 mb-2 leading-tight">
+        အနာဂတ်ကမ္ဘာ<br>
+        <span class="text-3xl">2d စာရင်းကိုင်</span>
+      </h1>
+      <h2 class="text-2xl font-bold text-yellow-400">ဆော့ဖ်ဝဲလ် အသက်သွင်းခြင်း</h2>
+      <p class="mt-2 text-sm text-slate-400">ဆက်လက်အသုံးပြုရန် သင်၏လိုင်စင်ကီးကို ထည့်သွင်းပါ။</p>
+    </div>
+    
+    <div class="p-4 bg-slate-900 rounded-md border border-slate-600">
+      <label class="text-xs font-bold text-slate-500 flex items-center gap-1">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+        ဤစက်အတွက် သီးသန့် ID (ပြင်ဆင်၍မရပါ)
+      </label>
+      <p class="text-xs text-amber-400 mt-1 mb-3">သင်၏ Device ID ကို လုံခြုံသောနေရာတွင် သိမ်းဆည်းထားရန် အောက်ပါခလုတ်မှ ဒေါင်းလုဒ်ဆွဲပါ။</p>
+      
+      <div class="flex items-center justify-center gap-2">
+        <!-- Always show ID, selectable and clear -->
+        <div class="w-full p-2 bg-slate-800 rounded text-center font-mono text-slate-200 select-all border border-slate-700 text-sm break-all cursor-not-allowed opacity-80" title="System Generated ID">
+           {{ licenseService.deviceId() }}
+        </div>
+        
+        <button (click)="downloadDeviceId()" title="Device ID ဖိုင် ဒေါင်းလုဒ်ဆွဲရန်" class="ml-2 flex-shrink-0 bg-emerald-600/80 hover:bg-emerald-700 text-white text-xs font-bold py-2 px-3 rounded transition h-full">
+           {{ hasDownloadedId() ? 'ထပ်မံယူမည်' : 'ဒေါင်းလုဒ်' }}
+        </button>
+      </div>
+
+      @if (hasDownloadedId()) {
+         <p class="text-xs text-green-400 text-center mt-2 flex items-center justify-center gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
+            Device ID ဖိုင်ကို ဒေါင်းလုဒ်ဆွဲပြီးပါပြီ
+         </p>
+      }
+    </div>
+
+    <form [formGroup]="activationForm" (ngSubmit)="activate()" class="space-y-4">
+       <div>
+        <label for="keyOrPassword" class="block text-sm font-medium text-slate-300">လိုင်စင်ကီး (သို့မဟုတ်) အက်ဒမင်စကားဝှက်</label>
+        <div class="relative">
+          <textarea id="keyOrPassword" formControlName="keyOrPassword" required rows="4"
+                  [class]="'w-full mt-1 bg-slate-900 border border-slate-600 rounded px-3 py-2 pr-10 focus:ring-yellow-500 text-slate-200 font-mono text-xs ' + (licenseKeyVisible() ? '' : 'tracking-widest')"
+                  [style.-webkit-text-security]="licenseKeyVisible() ? 'none' : 'disc'"></textarea>
+          <button type="button" (click)="toggleLicenseKeyVisibility()" class="absolute top-2 right-2 flex items-center text-slate-400 hover:text-slate-200">
+             @if (licenseKeyVisible()) {
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+            } @else {
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.243 4.243L6.228 6.228" /></svg>
+            }
+          </button>
+        </div>
+      </div>
+      
+      <button type="submit" [disabled]="isActivating() || activationForm.invalid"
+              class="w-full font-bold py-2 px-4 rounded transition text-slate-900 bg-yellow-500 hover:bg-yellow-600 disabled:bg-slate-600 disabled:cursor-not-allowed">
+        {{ isActivating() ? 'ခေတ္တစောင့်ဆိုင်းပါ...' : 'လိုင်စင် အသက်သွင်းမည်' }}
+      </button>
+    </form>
+    
+    @if (statusMessage()) {
+      <p class="text-center text-sm font-medium" 
+         [class]="statusMessage().includes('အောင်မြင်') ? 'text-green-400' : 'text-orange-400'">
+        {{ statusMessage() }}
+      </p>
+    }
+  </div>
+</div>
